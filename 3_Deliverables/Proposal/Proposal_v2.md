@@ -116,21 +116,9 @@ The comparison runs along a ladder of six configurations, all evaluated on the h
 4. Trained on R3. Contribution.
 5. Trained on R0, gold labels. Supervised ceiling.
 
-## Schedule
+## Tools
 
-- **Phase 0, feasibility (early September).** The go/no-go check under Risks and Concerns. No training code gets written until it passes.
-- **Phase 1, baselines (September).** Memory pipeline, retrieval and budget harness, and ladder steps 0 and 1 measured and frozen.
-- **Phase 2, rewards and first training runs (October).** All three rewards implemented behind one interface, candidate generation and scoring working at scale, and the first trained rewriters.
-- **Phase 3, full comparison (early November).** Remaining trained steps, the supervised ceiling, repeat runs with different seeds, and the per-category breakdown.
-- **Phase 4, analysis and writing (mid to late November).** Research questions 2 through 4, then the report, with the remaining slack held here.
-
-## Risks and Concerns
-
-Three things could actually stop the project. The first is a go/no-go check, resolved in Phase 0 before any training code exists:
-
-- **No headroom over the raw message.** If the raw message already brings back the needed memories most of the time, there is nothing left for a rewriter to fix. The check is an oracle query built straight from the annotated evidence, which is the best any query could possibly do here.
-- **Compute.** The GPU has 16GB, so training uses a roughly 10B-parameter model with LoRA and reduced-precision weights. Anything larger is used for inference only and never trained.
-- **The training split is small.** It comes from a single conversation, which is thin, so the absolute numbers may come out modest. Every reward trains on the same corpus, so the comparison against the ceiling still holds. If it turns out to be too thin to train anything at all, the label-free rewards can fall back to an unlabeled multi-session corpus, which costs them that shared corpus. The test split stays held out either way.
+The tools to be used in this project consist of various frontend, backend, database and AI frameworks and libraries. Addtionally, heavy computational work will be done utlizing a 16 GB GPU.
 
 ## Deliverables
 
@@ -140,27 +128,6 @@ Three things could actually stop the project. The first is a go/no-go check, res
 - Budget curves for all six ladder steps, reported per question category, with repeat runs.
 - Analysis: how the three rewards compare, which questions each one fails on, what the best-of-three ceiling looks like, and how different the rewrites actually are from each other.
 - A written final report.
-
-## Breadth and Mastery
-
-### NLP and GenAI
-
-The project sits on top of the core topics of the course:
-
-- **Word vectors and embedding spaces.** Retrieving memories is nearest-neighbor search in an embedding space, so what embeddings do and do not capture is the mechanism the whole project rests on. It is also where the main design decision comes from: a rewrite gets judged by what it retrieves.
-- **Sequence-to-sequence models and attention.** Rewriting a question into a search query is conditional generation, the same input-to-output framing as translation.
-- **Self-attention and transformers.** The rewriter is a decoder-only transformer. The embedding model is bidirectional and has a hard input length limit, which is part of why searching with the raw message fails in the first place.
-- **Pretraining and transfer learning.** The training method is adapting a pretrained model to a narrow task with LoRA [10], and R2 is basically a pretraining-style self-supervised objective being used as a reward.
-- **Prompting and learning from feedback.** Ladder step 1 is a prompted baseline, and the training loop is the Learning to Summarize from Human Feedback method [9] with a manufactured score standing in for human preference.
-- **Natural language generation.** Candidate generation leans on the decoding literature [11], because candidates that all look alike leave the reward nothing to pick from. Evaluation follows the same literature's argument about judging generated text by what it accomplishes [12].
-
-### Rest of MS Studies
-
-- **Machine learning.** Reward design, keeping an evaluation set completely out of training, ablations that move one variable at a time, and reporting seed-to-seed variance as part of the result.
-- **Deep learning.** Fine-tuning a pretrained model under a hard memory ceiling: adapter-based training, reduced-precision weights, and the trade-off between how many candidates get generated and how fast the loop runs.
-- **Information retrieval.** Dense retrieval, recall and rank metrics, and evaluation under a fixed budget.
-- **Software engineering.** A five-component harness driven by config files and reproducible from a seed, with caching in the places where it decides whether something is feasible at all.
-- **Data engineering.** Building on an existing dataset.
 
 ## References
 
