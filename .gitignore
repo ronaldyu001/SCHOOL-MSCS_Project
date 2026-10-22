@@ -1,0 +1,53 @@
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+
+# Python environments and bytecode
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+
+# Python packaging and tooling
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.ipynb_checkpoints/
+
+# React / Vite / Node
+node_modules/
+.vite/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+eslint-report.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Operating system files
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Editor temporary files
+*.swp
+*.swo
+*~
