@@ -1,1 +1,3 @@
-"""Dataset loading and conversation-level split adapters."""
+from .locomo_adapter import LoCoMoAdapter
+
+__all__ = ["LoCoMoAdapter"]

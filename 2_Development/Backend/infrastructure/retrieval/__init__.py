@@ -1,1 +1,3 @@
-"""Memory-store and retrieval adapters."""
+from .qdrant_adapter import QdrantAdapter
+
+__all__ = ["QdrantAdapter"]

@@ -1,0 +1,41 @@
+services:
+  backend:
+    build:
+      context: ../Backend
+      dockerfile: dockerfile
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: memories
+    volumes:
+      - ../.data:/data:ro
+    depends_on:
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ../Frontend
+      dockerfile: dockerfile
+    ports:
+      - "127.0.0.1:5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  qdrant:
+    image: qdrant/qdrant:${QDRANT_VERSION:-v1.16.0}
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  qdrant_storage:
