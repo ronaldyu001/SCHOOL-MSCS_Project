@@ -1,34 +1,19 @@
-from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple
 
-from application.ports.dataset import DatasetPort
-from domain.entities import QA, Conversation, DatasetSplit, QACategory
-
-
-@dataclass(frozen=True)
-class DatasetPartition:
-    conversations: Tuple[Conversation, ...]
-    qa: Tuple[QA, ...]
-
-
-@dataclass(frozen=True)
-class PreparedDataset:
-    train: DatasetPartition
-    validation: DatasetPartition
-    test: DatasetPartition
+from domain.entities import (
+    Dataset, DatasetPartition, DatasetSplit, PreparedDataset, QACategory,
+)
 
 
 class PrepareDataset:
-    def __init__(self, dataset: DatasetPort) -> None:
-        self.dataset = dataset
-
     def execute(
         self,
+        dataset: Dataset,
         split: DatasetSplit,
         categories: Optional[Sequence[QACategory]] = None,
     ) -> PreparedDataset:
-        conversations = tuple(self.dataset.load_conversations())
-        qa = tuple(self.dataset.load_qa())
+        conversations = dataset.conversations
+        qa = dataset.qa
         conversations_by_id = {item.id: item for item in conversations}
 
         if len(conversations_by_id) != len(conversations):
@@ -44,6 +29,9 @@ class PrepareDataset:
         unknown_ids = requested_ids - conversations_by_id.keys()
         if unknown_ids:
             raise ValueError(f"Unknown conversation IDs in split: {sorted(unknown_ids)}")
+
+        if requested_ids != set(conversations_by_id):
+            raise ValueError("Split must include every conversation in the dataset.")
 
         orphan_ids = {item.conversation_id for item in qa} - conversations_by_id.keys()
         if orphan_ids:
