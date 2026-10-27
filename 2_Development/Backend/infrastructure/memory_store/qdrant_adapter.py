@@ -18,6 +18,13 @@ class QdrantAdapter:
         self.collection_name = collection_name
         self.vector_size = vector_size
 
+    @classmethod
+    def from_config(cls, vector_size: int) -> "QdrantAdapter":
+        """Construct the adapter using the configured endpoint and collection."""
+        from infrastructure.config import config
+
+        return cls(QdrantClient(url=config.qdrant_url), config.qdrant_collection, vector_size)
+
     def ensure_collection(self) -> None:
         """Create a cosine collection, or verify an existing one without deleting it."""
         if not self.client.collection_exists(self.collection_name):

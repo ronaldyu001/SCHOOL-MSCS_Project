@@ -3,13 +3,15 @@ services:
     build:
       context: ../Backend
       dockerfile: dockerfile
+      target: runtime
     ports:
       - "127.0.0.1:8000:8000"
     environment:
       QDRANT_URL: http://qdrant:6333
-      QDRANT_COLLECTION: memories
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     volumes:
       - ../.data:/data:ro
+      - embedding_cache:/root/.cache/huggingface
     depends_on:
       qdrant:
         condition: service_started
@@ -39,3 +41,4 @@ services:
 
 volumes:
   qdrant_storage:
+  embedding_cache:

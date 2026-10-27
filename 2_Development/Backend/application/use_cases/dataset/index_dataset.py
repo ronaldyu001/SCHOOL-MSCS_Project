@@ -1,7 +1,7 @@
 from typing import Iterable, Sequence
 from uuid import NAMESPACE_URL, uuid5
 
-from application.ports.embedding import EmbeddingPort
+from application.ports.models.embedding import EmbeddingPort
 from application.ports.memory_store import MemoryStorePort
 from domain.entities import Conversation, Memory
 
@@ -45,7 +45,7 @@ class IndexDataset:
         return indexed_count
 
     def _index_batch(self, memories: Sequence[Memory]) -> None:
-        vectors = self.embedder.embed([memory.text for memory in memories])
+        vectors = self.embedder.embed_documents([memory.text for memory in memories])
         if len(vectors) != len(memories):
             raise ValueError("Embedder must return one vector per memory.")
         if any(len(vector) == 0 for vector in vectors):

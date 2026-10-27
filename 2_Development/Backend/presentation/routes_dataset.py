@@ -1,15 +1,20 @@
+import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from threading import Lock
+from typing import Dict, List, Literal, Optional, Tuple
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from application.use_cases.training import CreateDatasetSplit, LoadDataset, PrepareDataset
+from application.use_cases.dataset import CreateDatasetSplit, IndexDataset, LoadDataset, PrepareDataset
 from domain.entities import Dataset, DatasetSplit, QACategory
-from infrastructure.datasets.locomo_adapter import LoCoMoAdapter
+from infrastructure.dataset.locomo_adapter import LoCoMoAdapter
+from infrastructure.config import config
 
 router = APIRouter(prefix="/data", tags=["data"])
+logger = logging.getLogger(__name__)
+_index_lock = Lock()
 
 
 class LoadDatasetRequest(BaseModel):
@@ -20,12 +25,18 @@ class CreateSplitRequest(BaseModel):
     train_size: int = Field(ge=0, strict=True)
     validation_size: int = Field(ge=0, strict=True)
     test_size: int = Field(ge=0, strict=True)
-    seed: int = 123
+    seed: int = config.dataset_split_seed
 
 
 class PrepareDatasetRequest(BaseModel):
     split_id: str
     categories: Optional[List[QACategory]] = None
+
+
+class IndexDatasetRequest(BaseModel):
+    prepared_id: str = Field(min_length=1)
+    partition: Literal["train", "validation", "test"] = "train"
+    batch_size: int = Field(default=config.index_batch_size, gt=0, strict=True)
 
 
 def datasets(request: Request) -> Dict[str, Dataset]:
@@ -105,6 +116,9 @@ def prepare_dataset(dataset_id: str, body: PrepareDatasetRequest, request: Reque
         request.app.state.prepared_datasets = {}
     prepared_id = str(uuid4())
     request.app.state.prepared_datasets[prepared_id] = prepared
+    if not hasattr(request.app.state, "prepared_dataset_owners"):
+        request.app.state.prepared_dataset_owners = {}
+    request.app.state.prepared_dataset_owners[prepared_id] = dataset_id
     return {
         "dataset_id": dataset_id,
         "split_id": body.split_id,
@@ -122,4 +136,52 @@ def prepare_dataset(dataset_id: str, body: PrepareDatasetRequest, request: Reque
                 ("test", prepared.test),
             )
         },
+    }
+
+
+@router.post("/{dataset_id}/index")
+def index_dataset(dataset_id: str, body: IndexDatasetRequest, request: Request) -> dict:
+    get_dataset(request, dataset_id)
+    owners = getattr(request.app.state, "prepared_dataset_owners", {})
+    prepared = getattr(request.app.state, "prepared_datasets", {}).get(body.prepared_id)
+    if prepared is None or owners.get(body.prepared_id) != dataset_id:
+        raise HTTPException(status_code=404, detail="Prepared dataset not found for this dataset.")
+    partition = getattr(prepared, body.partition)
+
+    # Serialize indexing within this process, including first-time model/collection setup.
+    with _index_lock:
+        try:
+            if not hasattr(request.app.state, "dataset_indexer"):
+                from infrastructure.models.embedding import BGEAdapter
+                from infrastructure.memory_store import QdrantAdapter
+
+                embedder = BGEAdapter()
+                store = QdrantAdapter.from_config(vector_size=embedder.vector_size)
+                try:
+                    store.ensure_collection()
+                except Exception:
+                    store.client.close()
+                    raise
+                request.app.state.dataset_indexer = IndexDataset(embedder, store)
+            indexer = request.app.state.dataset_indexer
+            indexed_count = indexer.execute(partition.conversations, batch_size=body.batch_size)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except Exception as error:
+            logger.exception("Dataset indexing failed for %s", dataset_id)
+            raise HTTPException(
+                status_code=503,
+                detail="Indexing failed. Check backend logs and retry; earlier batches may have been stored.",
+            ) from error
+
+    return {
+        "dataset_id": dataset_id,
+        "prepared_id": body.prepared_id,
+        "partition": body.partition,
+        "conversation_count": len(partition.conversations),
+        "indexed_memory_count": indexed_count,
+        "collection": indexer.memory_store.collection_name,
+        "embedding_model": config.embedding_model,
+        "embedding_revision": config.embedding_revision,
+        "vector_size": indexer.embedder.vector_size,
     }

@@ -1,1 +1,1 @@
-"""Concrete adapters for datasets, models, retrieval, and persistence."""
+"""Adapters organized by application port, plus infrastructure configuration."""
