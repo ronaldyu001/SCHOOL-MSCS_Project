@@ -1,0 +1,211 @@
+/* Layer 1: the canvas. A faint dot field behind the masthead gives the page a
+ * floor; the first gradient layer paints over it and fades it out before the
+ * pipeline starts, so nothing competes with the content below. Both layers are
+ * on this element rather than an overlay, which keeps them out of the content's
+ * stacking context entirely. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  background-color: var(--canvas);
+  background-image:
+    linear-gradient(to bottom, transparent 0, var(--canvas) 100%),
+    radial-gradient(circle, var(--canvas-grid) 1px, transparent 1.5px);
+  background-size:
+    100% 640px,
+    22px 22px;
+  background-position: top left;
+  background-repeat: no-repeat, repeat;
+}
+
+.skip {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 20;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--fg);
+  background-color: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-overlay);
+  transform: translateY(-250%);
+  transition: transform var(--duration-base) var(--ease-out);
+}
+
+.skip:focus {
+  transform: translateY(0);
+}
+
+/* Layer 4: sticky chrome, above the scroll. */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: var(--overlay);
+  backdrop-filter: blur(12px) saturate(140%);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  width: 100%;
+  max-width: var(--page-max);
+  min-height: var(--header-height);
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.mark {
+  color: var(--accent);
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.brandName {
+  font-size: var(--text-sm);
+  font-weight: 580;
+  letter-spacing: -0.01em;
+}
+
+.brandMeta {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  color: var(--fg-faint);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.navLink:hover {
+  color: var(--fg);
+  background-color: var(--sunken);
+}
+
+.navLinkActive {
+  color: var(--accent-fg);
+  background-color: var(--accent-soft);
+}
+
+/* A hollow dot marks a section that is specified but not built yet, so the
+ * navigator doubles as a status board. */
+.plannedDot {
+  width: 0.3125rem;
+  height: 0.3125rem;
+  flex: none;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-full);
+  opacity: 0.55;
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-subtle);
+}
+
+.main {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  width: 100%;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) var(--space-16);
+}
+
+.footer {
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid var(--border-subtle);
+  background-color: var(--raised);
+}
+
+.footerInner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-6);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+
+.footerLinks {
+  display: flex;
+  gap: var(--space-4);
+  list-style: none;
+}
+
+@media (max-width: 900px) {
+  .headerInner {
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+    row-gap: var(--space-2);
+  }
+
+  .nav {
+    order: 3;
+    width: 100%;
+    margin-left: calc(var(--space-1) * -1);
+  }
+
+  .tools {
+    margin-left: auto;
+  }
+
+  .main {
+    padding: var(--space-6) var(--space-4) var(--space-12);
+  }
+
+  .footerInner {
+    padding-inline: var(--space-4);
+  }
+}

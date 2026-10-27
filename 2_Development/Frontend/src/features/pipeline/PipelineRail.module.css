@@ -1,0 +1,179 @@
+.rail {
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-6));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.railLabel {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  padding: 0 var(--space-2) var(--space-3);
+}
+
+.step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.step:hover {
+  background-color: var(--sunken);
+  color: var(--fg);
+}
+
+/* The connector runs between consecutive markers, and takes the colour of the
+ * phase above it, so a completed run reads as a filled spine. */
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--space-2) + 0.6875rem);
+  top: calc(var(--space-2) + 1.5rem);
+  width: 1px;
+  height: calc(100% - 1.5rem);
+  background-color: var(--connector, var(--border));
+}
+
+.marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background-color: var(--raised);
+  color: var(--fg-faint);
+  z-index: 1;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+  min-width: 0;
+  padding-top: 0.0625rem;
+}
+
+.title {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.status {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+/* Status variants */
+.blocked .marker {
+  border-style: dashed;
+}
+.blocked .title {
+  color: var(--fg-faint);
+}
+
+.running {
+  --connector: var(--running-line);
+}
+.running .marker {
+  color: var(--running);
+  border-color: var(--running-line);
+  background-color: var(--running-soft);
+}
+.running .status {
+  color: var(--running);
+}
+
+.done {
+  --connector: var(--done-line);
+}
+.done .marker {
+  color: var(--done);
+  border-color: var(--done-line);
+  background-color: var(--done-soft);
+}
+.done .status {
+  color: var(--done);
+}
+
+.failed {
+  --connector: var(--failed-line);
+}
+.failed .marker {
+  color: var(--failed);
+  border-color: var(--failed-line);
+  background-color: var(--failed-soft);
+}
+.failed .status {
+  color: var(--failed);
+}
+
+.idle .marker {
+  color: var(--fg-muted);
+  border-color: var(--border-strong);
+}
+
+.spin {
+  animation: rail-spin 760ms linear infinite;
+}
+
+@keyframes rail-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* Below the two-column breakpoint the rail becomes a horizontal strip, so the
+ * phase order is still visible without taking a column. */
+@media (max-width: 1023px) {
+  .rail {
+    position: static;
+    flex-direction: row;
+    gap: var(--space-2);
+    overflow-x: auto;
+    padding-bottom: var(--space-1);
+    scrollbar-width: none;
+  }
+
+  .rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .railLabel {
+    display: none;
+  }
+
+  .step {
+    flex: 1 0 auto;
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+    background-color: var(--raised);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .step:not(:last-child)::after {
+    display: none;
+  }
+
+  .status {
+    display: none;
+  }
+}

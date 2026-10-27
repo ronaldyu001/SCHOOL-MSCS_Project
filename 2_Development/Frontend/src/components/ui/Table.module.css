@@ -1,0 +1,82 @@
+.scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background-color: var(--raised);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.caption {
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  font-size: var(--text-2xs);
+  font-family: var(--mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.table th,
+.table td {
+  padding: var(--space-2) var(--space-4);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table thead th {
+  font-size: var(--text-2xs);
+  font-weight: 560;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.table tbody th,
+.table thead th:first-child {
+  text-align: left;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.table tbody tr + tr th,
+.table tbody tr + tr td {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.table td {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  color: var(--fg);
+}
+
+.table tfoot th,
+.table tfoot td {
+  border-top: 1px solid var(--border);
+  background-color: var(--sunken);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+
+/* The held-out partition the evaluation ladder reports on. */
+.highlight th,
+.highlight td {
+  background-color: var(--accent-soft);
+}
+
+.highlight th {
+  color: var(--accent-fg);
+}
+
+.note {
+  font-family: var(--sans);
+  font-size: var(--text-2xs);
+  color: var(--fg-faint);
+}

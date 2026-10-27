@@ -1,0 +1,221 @@
+.masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+}
+
+.intro {
+  padding: var(--space-8) var(--space-8) var(--space-6);
+}
+
+.eyebrow {
+  display: block;
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-fg);
+  margin-bottom: var(--space-4);
+}
+
+.lede {
+  margin-top: var(--space-4);
+  font-size: var(--text-md);
+  line-height: var(--leading-relaxed);
+  color: var(--fg-muted);
+  max-width: 46ch;
+}
+
+.lede strong {
+  color: var(--fg);
+  font-weight: 560;
+}
+
+/* Layer 3, inset into the masthead: the invariants that hold for every run. */
+.frozen {
+  padding: var(--space-8) var(--space-8) var(--space-6);
+  background-color: var(--sunken);
+  border-left: 1px solid var(--border-subtle);
+}
+
+.frozenHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  margin-bottom: var(--space-4);
+}
+
+.invariants {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.invariant {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+  font-size: var(--text-xs);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.invariant:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.invariantName {
+  color: var(--fg-muted);
+}
+
+.invariantValue {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  color: var(--fg);
+  text-align: right;
+}
+
+.frozenNote {
+  margin-top: var(--space-4);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  color: var(--fg-faint);
+}
+
+/* The evaluation ladder, as a band across the foot of the masthead. */
+.ladder {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border-top: 1px solid var(--border-subtle);
+}
+
+.rung {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-4) var(--space-5);
+  border-left: 1px solid var(--border-subtle);
+}
+
+.rung:first-child {
+  border-left: 0;
+}
+
+.rungStep {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  color: var(--fg-faint);
+}
+
+.rungName {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--fg);
+}
+
+.rungNote {
+  font-size: var(--text-2xs);
+  line-height: var(--leading-snug);
+  color: var(--fg-muted);
+}
+
+/* Steps 2–4 are this project's contribution; the rest are references it is
+ * measured against. A top rule carries that distinction without a legend. */
+.contribution {
+  background-color: var(--accent-soft);
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.contribution .rungStep,
+.contribution .rungName {
+  color: var(--accent-fg);
+}
+
+.ceiling {
+  box-shadow: inset 0 2px 0 var(--border-strong);
+}
+
+.ladderLegend {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  padding: var(--space-3) var(--space-8);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-2xs);
+  color: var(--fg-faint);
+  list-style: none;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.legendSwatch {
+  width: var(--space-4);
+  height: 2px;
+  background-color: var(--border-strong);
+}
+
+.legendSwatchAccent {
+  background-color: var(--accent);
+}
+
+@media (max-width: 1023px) {
+  .masthead {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .intro,
+  .frozen {
+    padding: var(--space-6) var(--space-5);
+  }
+
+  .frozen {
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .ladder {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .rung:nth-child(3n + 1) {
+    border-left: 0;
+  }
+
+  .rung:nth-child(n + 4) {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .ladderLegend {
+    padding-inline: var(--space-5);
+  }
+}
+
+@media (max-width: 560px) {
+  .ladder {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rung:nth-child(3n + 1) {
+    border-left: 1px solid var(--border-subtle);
+  }
+
+  .rung:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .rung:nth-child(n + 3) {
+    border-top: 1px solid var(--border-subtle);
+  }
+}

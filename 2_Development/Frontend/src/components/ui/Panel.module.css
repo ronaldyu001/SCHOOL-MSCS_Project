@@ -1,0 +1,87 @@
+/* Layer 2: a raised surface on the canvas. Depth comes from the background
+ * step plus a 1px border; the shadow is there only to seat the edge. */
+.panel {
+  background-color: var(--raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-raised);
+  overflow: clip;
+}
+
+.flush {
+  border-radius: 0;
+  border-inline: 0;
+  box-shadow: none;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+}
+
+.header + .body,
+.header + .section {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.headingGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.eyebrow {
+  display: block;
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.description {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--fg-muted);
+  max-width: 58ch;
+}
+
+.aside {
+  flex: none;
+}
+
+.body {
+  padding: var(--space-5) var(--space-6);
+}
+
+/* A band inside the panel, separated by a rule rather than a gap, so stacked
+ * regions read as one object instead of a pile of cards. */
+.section {
+  padding: var(--space-5) var(--space-6);
+}
+
+.section + .section {
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Layer 3: recessed. Holds results, never controls. */
+.sunken {
+  background-color: var(--sunken);
+}
+
+@media (max-width: 600px) {
+  .header,
+  .body,
+  .section {
+    padding-inline: var(--space-4);
+  }
+
+  .header {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+}

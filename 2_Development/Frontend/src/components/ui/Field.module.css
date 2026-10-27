@@ -1,0 +1,159 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 560;
+  letter-spacing: 0.01em;
+  color: var(--fg);
+}
+
+.labelNote {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  color: var(--fg-faint);
+}
+
+.control {
+  width: 100%;
+  padding: 0.4375rem var(--space-3);
+  min-height: 2.125rem;
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  color: var(--fg);
+  background-color: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.control::placeholder {
+  color: var(--fg-faint);
+}
+
+.control:hover:not(:disabled):not(:focus) {
+  border-color: var(--border-strong);
+}
+
+.control:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+
+.control:disabled {
+  background-color: var(--sunken);
+  color: var(--fg-faint);
+  cursor: not-allowed;
+}
+
+.numeric {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+.invalid {
+  border-color: var(--failed);
+}
+
+.invalid:focus {
+  outline-color: var(--failed);
+}
+
+.select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 49%, currentColor 50%),
+    linear-gradient(-45deg, transparent 49%, currentColor 50%);
+  background-position:
+    calc(100% - 15px) calc(50% + 1px),
+    calc(100% - 10px) calc(50% + 1px);
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: var(--space-8);
+}
+
+.hint {
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  color: var(--fg-muted);
+  text-wrap: pretty;
+}
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  color: var(--failed);
+}
+
+.error svg {
+  margin-top: 0.15em;
+}
+
+/* Checkbox list, for the category filter. */
+.checkList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.25rem var(--space-3) 0.25rem var(--space-2);
+  font-size: var(--text-xs);
+  background-color: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.check:hover {
+  border-color: var(--border-strong);
+}
+
+.check input {
+  accent-color: var(--accent);
+  margin: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.check:has(input:checked) {
+  background-color: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-fg);
+}
+
+.check:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.checkTag {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  color: var(--fg-faint);
+}
+
+.check:has(input:checked) .checkTag {
+  color: var(--accent-fg);
+}

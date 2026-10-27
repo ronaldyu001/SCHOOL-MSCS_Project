@@ -1,0 +1,110 @@
+.card {
+  position: relative;
+  scroll-margin-top: calc(var(--header-height) + var(--space-4));
+}
+
+/* A status stripe down the leading edge. Reads as part of the panel rather than
+ * decoration on it, and gives the stack a spine when several are open. */
+.card::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  background-color: var(--stripe, transparent);
+  transition: background-color var(--duration-base) var(--ease-out);
+}
+
+.card[data-status='idle'] {
+  --stripe: var(--border);
+}
+.card[data-status='blocked'] {
+  --stripe: var(--border-subtle);
+}
+.card[data-status='running'] {
+  --stripe: var(--running);
+}
+.card[data-status='done'] {
+  --stripe: var(--done);
+}
+.card[data-status='failed'] {
+  --stripe: var(--failed);
+}
+
+.endpoint {
+  color: var(--fg-faint);
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* Two or three short numeric inputs sit side by side; a path input takes the
+ * full width. The grid decides that, not the caller. */
+.inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-4) var(--space-5);
+  align-items: start;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.timing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+
+.insight {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.insightHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.insightTitle {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.readout {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--fg-muted);
+  max-width: var(--measure);
+  text-wrap: pretty;
+}
+
+.readout strong {
+  color: var(--fg);
+  font-weight: 560;
+}
+
+@media (max-width: 600px) {
+  .timing {
+    margin-left: 0;
+    width: 100%;
+  }
+}

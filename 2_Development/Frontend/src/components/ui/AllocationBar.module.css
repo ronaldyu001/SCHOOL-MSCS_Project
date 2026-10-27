@@ -1,0 +1,82 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.track {
+  display: flex;
+  height: 0.5rem;
+  background-color: var(--sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  overflow: clip;
+}
+
+.segment {
+  transition: flex-basis var(--duration-base) var(--ease-out);
+}
+
+.segment + .segment {
+  border-left: 1px solid var(--raised);
+}
+
+/* One hue, three weights, then neutral for the remainder — the legend carries
+ * the identity, so the bar only has to show proportion. */
+.primary {
+  background-color: var(--accent);
+}
+
+.secondary {
+  background-color: color-mix(in oklab, var(--accent) 48%, var(--sunken));
+}
+
+.tertiary {
+  background-color: var(--border-strong);
+}
+
+.remainder {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--border) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.swatch {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  border-radius: var(--radius-xs);
+  transform: translateY(-0.05em);
+}
+
+.name {
+  color: var(--fg-muted);
+}
+
+.amount {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.share {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  color: var(--fg-faint);
+}

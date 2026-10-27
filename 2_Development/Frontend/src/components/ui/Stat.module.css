@@ -1,0 +1,69 @@
+/* Recessed wells. Every measured number in the app lives in one of these, which
+ * is how a reader tells a result from a label at a glance. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: var(--space-3);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+/* On a sunken band the well has to step the other way to stay legible. */
+.onSunken {
+  background-color: var(--raised);
+}
+
+.label {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.valueRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.value {
+  font-family: var(--mono);
+  font-size: var(--text-lg);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.textValue {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.unit {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+
+.hint {
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  color: var(--fg-muted);
+  text-wrap: pretty;
+}
+
+.accent .value {
+  color: var(--accent-fg);
+}

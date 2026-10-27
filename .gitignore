@@ -51,3 +51,6 @@ Desktop.ini
 *.swp
 *.swo
 *~
+
+# AI
+.claude

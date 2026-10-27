@@ -1,0 +1,188 @@
+/*
+ * Design tokens.
+ *
+ * Layering model — every surface in the app is one of four depths, and depth is
+ * carried by background + border rather than by stacked shadows:
+ *
+ *   canvas   the page itself, behind everything
+ *   raised   panels that sit on the canvas (lifted in light, lighter in dark)
+ *   sunken   wells recessed into a panel, where measured values live
+ *   overlay  sticky chrome and popovers, above the scroll
+ *
+ * Colour is split into two jobs so they never fight: `accent` is the single
+ * interactive/brand hue, and the semantic trio (running/done/failed) is
+ * reserved for pipeline state. State is always paired with an icon and a word,
+ * never signalled by colour alone.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Neutrals — cool slate ink */
+  --canvas: #f6f7f8;
+  --canvas-grid: #dfe4e8;
+  --raised: #ffffff;
+  --sunken: #f0f2f4;
+  --overlay: rgba(255, 255, 255, 0.86);
+
+  --border-subtle: #e6e9ec;
+  --border: #d5dade;
+  --border-strong: #b6bfc6;
+
+  --fg: #0c1114;
+  --fg-muted: #57636d;
+  --fg-faint: #8a949d;
+  --fg-on-accent: #ffffff;
+
+  /* Accent — the one interactive hue */
+  --accent: #0f6b63;
+  --accent-hover: #0b544e;
+  --accent-fg: #0b544e;
+  --accent-soft: rgba(15, 107, 99, 0.09);
+  --accent-line: rgba(15, 107, 99, 0.28);
+
+  /* Pipeline state */
+  --running: #9c5d14;
+  --running-soft: rgba(156, 93, 20, 0.1);
+  --running-line: rgba(156, 93, 20, 0.3);
+  --done: #126b47;
+  --done-soft: rgba(18, 107, 71, 0.1);
+  --done-line: rgba(18, 107, 71, 0.28);
+  --failed: #ad2a21;
+  --failed-soft: rgba(173, 42, 33, 0.09);
+  --failed-line: rgba(173, 42, 33, 0.28);
+
+  --ring: rgba(15, 107, 99, 0.45);
+  --shadow-raised: 0 1px 2px rgba(12, 17, 20, 0.05);
+  --shadow-overlay: 0 6px 24px -8px rgba(12, 17, 20, 0.16);
+
+  /* Type */
+  --sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, system-ui, sans-serif;
+  --mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
+
+  --text-2xs: 0.6875rem; /* 11 */
+  --text-xs: 0.75rem; /* 12 */
+  --text-sm: 0.8125rem; /* 13 */
+  --text-base: 0.9375rem; /* 15 */
+  --text-md: 1.0625rem; /* 17 */
+  --text-lg: 1.25rem; /* 20 */
+  --text-xl: 1.5625rem; /* 25 */
+  --text-2xl: 2rem; /* 32 */
+  --text-display: clamp(2rem, 1.35rem + 2.1vw, 2.75rem);
+
+  --leading-tight: 1.15;
+  --leading-snug: 1.3;
+  --leading-normal: 1.55;
+  --leading-relaxed: 1.65;
+
+  /* Space — 4px base */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  --measure: 64ch;
+  --page-max: 1180px;
+  --header-height: 3.5rem;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+}
+
+/* Dark is the OS preference unless the user pinned light in this app. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --canvas: #0a0d10;
+    --canvas-grid: #1b232a;
+    --raised: #12171c;
+    --sunken: #0d1216;
+    --overlay: rgba(18, 23, 28, 0.88);
+
+    --border-subtle: #1c242b;
+    --border: #28323b;
+    --border-strong: #3a4753;
+
+    --fg: #e9eef2;
+    --fg-muted: #97a4b0;
+    --fg-faint: #67747f;
+    --fg-on-accent: #05211f;
+
+    --accent: #4ecbbf;
+    --accent-hover: #6fdbd0;
+    --accent-fg: #6fdbd0;
+    --accent-soft: rgba(78, 203, 191, 0.12);
+    --accent-line: rgba(78, 203, 191, 0.32);
+
+    --running: #e2a74f;
+    --running-soft: rgba(226, 167, 79, 0.13);
+    --running-line: rgba(226, 167, 79, 0.32);
+    --done: #45d396;
+    --done-soft: rgba(69, 211, 150, 0.12);
+    --done-line: rgba(69, 211, 150, 0.3);
+    --failed: #f98b82;
+    --failed-soft: rgba(249, 139, 130, 0.12);
+    --failed-line: rgba(249, 139, 130, 0.3);
+
+    --ring: rgba(78, 203, 191, 0.5);
+    --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-overlay: 0 8px 28px -10px rgba(0, 0, 0, 0.7);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --canvas: #0a0d10;
+  --canvas-grid: #1b232a;
+  --raised: #12171c;
+  --sunken: #0d1216;
+  --overlay: rgba(18, 23, 28, 0.88);
+
+  --border-subtle: #1c242b;
+  --border: #28323b;
+  --border-strong: #3a4753;
+
+  --fg: #e9eef2;
+  --fg-muted: #97a4b0;
+  --fg-faint: #67747f;
+  --fg-on-accent: #05211f;
+
+  --accent: #4ecbbf;
+  --accent-hover: #6fdbd0;
+  --accent-fg: #6fdbd0;
+  --accent-soft: rgba(78, 203, 191, 0.12);
+  --accent-line: rgba(78, 203, 191, 0.32);
+
+  --running: #e2a74f;
+  --running-soft: rgba(226, 167, 79, 0.13);
+  --running-line: rgba(226, 167, 79, 0.32);
+  --done: #45d396;
+  --done-soft: rgba(69, 211, 150, 0.12);
+  --done-line: rgba(69, 211, 150, 0.3);
+  --failed: #f98b82;
+  --failed-soft: rgba(249, 139, 130, 0.12);
+  --failed-line: rgba(249, 139, 130, 0.3);
+
+  --ring: rgba(78, 203, 191, 0.5);
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-overlay: 0 8px 28px -10px rgba(0, 0, 0, 0.7);
+}
