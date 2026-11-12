@@ -28,6 +28,17 @@ the header shows **API DOWN** and the page says what to start.
 To point the dev server at a backend somewhere else, set `BACKEND_URL` before
 `npm run dev`.
 
+## Desktop development
+
+With Docker Desktop running, use `npx tauri dev` (or `npm run tauri dev`).
+The Tauri dev hook runs `scripts/start-desktop.sh`, builds and starts the backend
+and Qdrant with Docker Compose, waits for readiness, then starts Vite on port 5173.
+Rust and the platform's Tauri build prerequisites must be installed.
+Keep the Compose frontend service stopped because it uses the same port as Vite.
+Containers remain running when Tauri closes. From this folder, stop them with
+`docker compose -f ../Deployment/docker-compose.yaml stop backend qdrant`.
+This hook is for development; packaged apps do not start Docker automatically.
+
 ## One API origin everywhere
 
 The browser always calls `/api/...`, in every environment:
