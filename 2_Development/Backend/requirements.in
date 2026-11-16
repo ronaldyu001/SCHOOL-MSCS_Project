@@ -1,4 +1,5 @@
 fastapi
+psutil
 pydantic
 uvicorn[standard]
 qdrant-client>=1.16,<2
