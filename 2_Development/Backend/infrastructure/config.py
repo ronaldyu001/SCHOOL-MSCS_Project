@@ -13,6 +13,8 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
 
 @dataclass(frozen=True)
 class Config:
+    llm_model_id: str = "Qwen/Qwen2.5-0.5B"
+    llm_model_revision: str = "060db6499f32faf8b98477b0a26969ef7d8b9987"
     embedding_model: str = "BAAI/bge-base-en-v1.5"
     embedding_revision: str = "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a"
     embedding_device: str = "cpu"
