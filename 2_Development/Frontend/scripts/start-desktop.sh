@@ -9,8 +9,23 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-# Vite serves the desktop UI; the Compose frontend would conflict on port 5173.
-docker compose -f ../Deployment/docker-compose.yaml up -d --build --wait backend qdrant
+set -- -f ../Deployment/docker-compose.yaml
+gpu_override=../Deployment/docker-compose.gpu.yaml
+
+docker compose "$@" build backend
+
+# Probe with the same image and GPU reservation the backend would use.
+if docker compose "$@" -f "$gpu_override" run --rm --no-deps -T backend \
+  python -c 'import sys; import torch; sys.exit(0 if torch.cuda.is_available() else 1)' \
+  >/dev/null 2>&1; then
+  echo "CUDA available. Starting the backend with GPU access."
+  set -- "$@" -f "$gpu_override"
+else
+  echo "CUDA unavailable. Starting the backend in CPU mode."
+fi
+
+# Vite serves the desktop UI on port 5173.
+docker compose "$@" up -d --wait backend qdrant
 
 # Containers remain available after the desktop app closes.
 exec npm run dev

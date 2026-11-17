@@ -5,3 +5,5 @@ uvicorn[standard]
 qdrant-client>=1.16,<2
 python-dotenv
 sentence-transformers
+torch
+transformers

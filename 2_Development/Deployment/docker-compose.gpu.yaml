@@ -1,0 +1,11 @@
+services:
+  backend:
+    environment:
+      LLM_DEVICE: gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

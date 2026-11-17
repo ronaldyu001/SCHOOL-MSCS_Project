@@ -35,6 +35,17 @@ responses, reproducible splits for the same seed, category filtering, and
 appropriate errors for missing files, invalid datasets, and invalid split sizes.
 The project uses Docker Compose and manual UAT for verification.
 
+On a host configured for NVIDIA GPU access, start the backend with the GPU
+override from `2_Development/Deployment`:
+
+```sh
+docker compose -f docker-compose.yaml -f docker-compose.gpu.yaml up -d --build --wait backend
+```
+
+The override sets `LLM_DEVICE=gpu`, so `TransformersLLMAdapter` defaults to CUDA
+inside that container. An explicit `device` argument takes precedence. The base
+Compose file defaults to CPU and works on Docker Desktop for Mac.
+
 ## Application structure
 
 - `application/use_cases/dataset`: loading, split creation, preparation, and indexing.
