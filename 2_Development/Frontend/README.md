@@ -31,12 +31,13 @@ To point the dev server at a backend somewhere else, set `BACKEND_URL` before
 ## Desktop development
 
 With Docker Desktop running, use `npx tauri dev` (or `npm run tauri dev`).
-The Tauri dev hook runs `scripts/start-desktop.sh`, builds and starts the backend
-and Qdrant with Docker Compose, waits for readiness, then starts Vite on port 5173.
+The Tauri dev hook runs `scripts/start-desktop.sh`. It starts desktop Vite on
+port 5174 while Docker Compose builds and starts the backend and Qdrant.
+The desktop can open while the API is still starting. Browser development uses
+port 5173.
 It adds the GPU Compose override if a test container can use CUDA. Otherwise it
 starts the backend in CPU mode.
 Rust and the platform's Tauri build prerequisites must be installed.
-Keep the Compose frontend service stopped because it uses the same port as Vite.
 Containers remain running when Tauri closes. From this folder, stop them with
 `docker compose -f ../Deployment/docker-compose.yaml stop backend qdrant`.
 This hook is for development; packaged apps do not start Docker automatically.
