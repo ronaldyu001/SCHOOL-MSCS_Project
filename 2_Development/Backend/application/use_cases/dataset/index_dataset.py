@@ -3,7 +3,11 @@ from uuid import NAMESPACE_URL, uuid5
 
 from application.ports.models.embedding import EmbeddingPort
 from application.ports.memory_store import MemoryStorePort
-from domain.entities import Conversation, Memory
+from domain.entities import Conversation, Memory, Session, Turn
+
+
+def render_memory_turn(session: Session, turn: Turn) -> str:
+    return f"[{session.timestamp.isoformat()}] {turn.speaker}: {turn.text}"
 
 
 class IndexDataset:
@@ -31,7 +35,7 @@ class IndexDataset:
                         session_id=session.id,
                         source_turn_ids=(turn.id,),
                         timestamp=session.timestamp,
-                        text=f"[{session.timestamp.isoformat()}] {turn.speaker}: {turn.text}",
+                        text=render_memory_turn(session, turn),
                     )
                     batch.append(memory)
                     if len(batch) == batch_size:

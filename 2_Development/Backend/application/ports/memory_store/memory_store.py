@@ -18,7 +18,12 @@ class MemoryStorePort(Protocol):
         ...
 
     def search(
-        self, vector: Sequence[float], conversation_id: str, limit: int
+        self,
+        vector: Sequence[float],
+        conversation_id: str,
+        limit: int,
+        *,
+        eligible_turn_ids: frozenset[str] | None = None,
     ) -> Sequence[MemoryMatch]:
-        """Return matches from only the specified conversation, best first."""
+        """Return the best matches after filtering by conversation and eligible source turns."""
         ...

@@ -19,11 +19,17 @@ class QdrantAdapter:
         self.vector_size = vector_size
 
     @classmethod
-    def from_config(cls, vector_size: int) -> "QdrantAdapter":
-        """Construct the adapter using the configured endpoint and collection."""
+    def from_config(
+        cls, vector_size: int, *, collection_name: str | None = None
+    ) -> "QdrantAdapter":
+        """Use the configured endpoint and the selected or default collection."""
         from infrastructure.config import config
 
-        return cls(QdrantClient(url=config.qdrant_url), config.qdrant_collection, vector_size)
+        return cls(
+            QdrantClient(url=config.qdrant_url),
+            config.qdrant_collection if collection_name is None else collection_name,
+            vector_size,
+        )
 
     def ensure_collection(self) -> None:
         """Create a cosine collection, or verify an existing one without deleting it."""
@@ -75,17 +81,37 @@ class QdrantAdapter:
         )
 
     def search(
-        self, vector: Sequence[float], conversation_id: str, limit: int
+        self,
+        vector: Sequence[float],
+        conversation_id: str,
+        limit: int,
+        *,
+        eligible_turn_ids: frozenset[str] | None = None,
     ) -> Sequence[MemoryMatch]:
         if limit <= 0:
             raise ValueError("Search limit must be positive.")
         self._validate_vector(vector)
+        if eligible_turn_ids is not None and not eligible_turn_ids:
+            return ()
+
+        conditions = [
+            models.FieldCondition(
+                key="conversation_id", match=models.MatchValue(value=conversation_id)
+            )
+        ]
+        if eligible_turn_ids is not None:
+            # IndexDataset creates one memory per turn. Filter before applying the limit.
+            conditions.append(
+                models.FieldCondition(
+                    key="source_turn_ids",
+                    match=models.MatchAny(any=sorted(eligible_turn_ids)),
+                )
+            )
+
         result = self.client.query_points(
             collection_name=self.collection_name,
             query=list(vector),
-            query_filter=models.Filter(must=[models.FieldCondition(
-                key="conversation_id", match=models.MatchValue(value=conversation_id)
-            )]),
+            query_filter=models.Filter(must=conditions),
             limit=limit,
             with_payload=True,
             with_vectors=False,
@@ -93,12 +119,15 @@ class QdrantAdapter:
         matches = []
         for point in result.points:
             payload = point.payload or {}
+            source_turn_ids = tuple(payload["source_turn_ids"])
+            if eligible_turn_ids is not None and not eligible_turn_ids.issuperset(source_turn_ids):
+                raise ValueError("Search returned a memory with an ineligible source turn.")
             matches.append(MemoryMatch(
                 memory=Memory(
                     id=payload["id"],
                     conversation_id=payload["conversation_id"],
                     session_id=payload["session_id"],
-                    source_turn_ids=tuple(payload["source_turn_ids"]),
+                    source_turn_ids=source_turn_ids,
                     timestamp=datetime.fromisoformat(payload["timestamp"]),
                     text=payload["text"],
                 ),

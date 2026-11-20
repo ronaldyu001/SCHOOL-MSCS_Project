@@ -54,3 +54,6 @@ Desktop.ini
 
 # AI
 .claude
+
+# Local experiment artifacts
+/2_Development/.artifacts/

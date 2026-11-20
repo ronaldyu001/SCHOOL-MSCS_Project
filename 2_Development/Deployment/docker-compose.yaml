@@ -11,6 +11,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     volumes:
       - ../.data:/data:ro
+      - ../.artifacts:/artifacts
       - embedding_cache:/root/.cache/huggingface
     depends_on:
       qdrant:

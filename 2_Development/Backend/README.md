@@ -46,12 +46,38 @@ The override sets `LLM_DEVICE=gpu`, so `TransformersLLMAdapter` defaults to CUDA
 inside that container. An explicit `device` argument takes precedence. The base
 Compose file defaults to CPU and works on Docker Desktop for Mac.
 
+## Build reward datasets
+
+From `2_Development/Deployment`, run a small pilot on the bundled LoCoMo data:
+
+```sh
+docker compose build backend
+docker compose run --rm backend python -m presentation.build_reward_datasets \
+  --dataset /data/locomo10.json --output /artifacts/pilot \
+  --train-size 1 --validation-size 2 --test-size 7 --max-inputs-per-reward 8
+```
+
+The command indexes the training conversations in a collection scoped to the corpus,
+split, and embedding configuration. Use `--rewards r0 r1` to select a subset, and
+`--help` to see the sampling and retrieval settings. For a custom checkpoint, pass
+`--model-id` and a pinned `--model-revision`. Each build uses one frozen checkpoint
+for rewriting and reader tasks.
+
+Results appear in `2_Development/.artifacts/pilot`. Each reward has a JSONL file of
+`prompt` and `completion` pairs and a diagnostics file with one outcome per attempted
+input. The manifest records the split, settings, revisions, and counts. A pilot can
+produce an empty file if no input has two distinct rewrites with different scores.
+Use a new output directory for another run.
+
 ## Application structure
 
 - `application/use_cases/dataset`: loading, split creation, preparation, and indexing.
-- `application/use_cases/training`: reserved for model training and fine-tuning use cases.
+- `application/use_cases/generation`: text generation, query rewriting, and answering.
+- `application/use_cases/retrieval`: query search, context packing, and evidence scoring.
+- `application/use_cases/rewards`: input builders and scorers for R0–R3.
+- `application/use_cases/training`: selecting rewrites and assembling fine-tuning data.
 - `application/use_cases/evaluation`: evaluation use cases.
-- `application/ports/models`: model interfaces, currently `EmbeddingPort`. Add a separate fine-tuning port when the training contract is defined.
+- `application/ports/models`: interfaces for embedding, generation, tokenization, and continuation scoring.
 - `infrastructure/models`: concrete model adapters implementing those interfaces.
 
 Concrete models do not belong in `domain/entities`. Domain entities describe application data and rules; model adapters perform embedding or training through application ports.
