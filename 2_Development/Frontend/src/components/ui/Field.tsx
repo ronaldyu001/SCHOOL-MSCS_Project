@@ -3,6 +3,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from 'react'
 import { Icon } from './Icon'
 import styles from './Field.module.css'
@@ -176,6 +177,118 @@ export function CheckGroup<T extends string>({
           </li>
         ))}
       </ul>
+      {hint ? (
+        <p className={styles.hint} id={hintId}>
+          {hint}
+        </p>
+      ) : null}
+    </fieldset>
+  )
+}
+
+type TextAreaFieldProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'id'> & {
+  label: string
+  labelNote?: ReactNode
+  hint?: ReactNode
+  error?: string
+  /** Render in the monospace face, for prompts and packed contexts. */
+  mono?: boolean
+}
+
+export function TextAreaField({
+  label,
+  labelNote,
+  hint,
+  error,
+  mono,
+  rows = 3,
+  ...rest
+}: TextAreaFieldProps) {
+  return (
+    <FieldShell label={label} labelNote={labelNote} hint={hint} error={error}>
+      {({ id, describedBy }) => (
+        <textarea
+          id={id}
+          rows={rows}
+          className={[
+            styles.control,
+            styles.textarea,
+            mono && styles.mono,
+            error && styles.invalid,
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          aria-describedby={describedBy}
+          aria-invalid={Boolean(error) || undefined}
+          {...rest}
+        />
+      )}
+    </FieldShell>
+  )
+}
+
+export type ChipOption = {
+  value: string
+  label?: string
+  note?: string
+}
+
+type OptionChipsProps = {
+  legend: string
+  hint?: ReactNode
+  options: ChipOption[]
+  selected?: string
+  disabled?: boolean
+  onPick: (value: string) => void
+  /** Shown in place of the chips when there is nothing to offer. */
+  empty?: ReactNode
+}
+
+/**
+ * One-tap values for a field the user may also type into. Buttons rather than a
+ * select, because the list is short, each entry is self-describing, and the
+ * field underneath stays authoritative.
+ */
+export function OptionChips({
+  legend,
+  hint,
+  options,
+  selected,
+  disabled,
+  onPick,
+  empty,
+}: OptionChipsProps) {
+  const hintId = useId()
+  return (
+    <fieldset className={styles.field} style={{ border: 0, margin: 0, padding: 0 }}>
+      <legend className={styles.label} style={{ padding: 0 }}>
+        {legend}
+      </legend>
+      {options.length === 0 ? (
+        <p className={styles.hint}>{empty ?? 'Nothing to choose from yet.'}</p>
+      ) : (
+        <ul className={styles.chipRow} aria-describedby={hint ? hintId : undefined}>
+          {options.map((option) => (
+            <li key={option.value}>
+              <button
+                type="button"
+                disabled={disabled}
+                aria-pressed={option.value === selected}
+                className={[
+                  styles.chipButton,
+                  option.value === selected && styles.chipButtonOn,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => onPick(option.value)}
+                title={option.note}
+              >
+                {option.label ?? option.value}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {hint ? (
         <p className={styles.hint} id={hintId}>
           {hint}

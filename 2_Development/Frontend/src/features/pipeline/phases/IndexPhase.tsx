@@ -27,20 +27,15 @@ export function IndexPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
       id="phase-index"
       step={4}
       title="Index into the memory store"
-      purpose="Turn each conversation turn into one memory, embed it with the frozen encoder, and upsert it into the Qdrant collection that retrieval will search."
-      endpoint="POST /data/{dataset_id}/index"
+      purpose="Turn every message into a searchable memory."
       status={statusOf(run, prepared === null)}
-      blockedReason={
-        prepared
-          ? undefined
-          : 'Prepare the partitions first. Indexing reads one prepared partition, so it needs the prepared id that phase 3 returns.'
-      }
+      blockedReason={prepared ? undefined : 'Prepare the partitions first.'}
       startedAt={run.status === 'running' ? run.startedAt : null}
       elapsedMs={
         run.status === 'done' || run.status === 'failed' ? run.elapsedMs : undefined
       }
       error={run.status === 'failed' ? run.error : undefined}
-      runningNote="Embedding on CPU and upserting in batches. The first run also downloads the encoder, and the backend serialises indexing behind a lock, so minutes rather than seconds is normal."
+      runningNote="Embedding on CPU. The first run downloads the encoder, so expect minutes."
       controls={
         <PhaseControls
           inputs={
@@ -76,7 +71,6 @@ export function IndexPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
                 value={settings.batchSize}
                 disabled={busy || !prepared}
                 onChange={(event) => update('batchSize', Number(event.target.value))}
-                hint="Affects throughput and peak memory only. The stored vectors are identical at any batch size."
               />
             </>
           }
@@ -108,7 +102,6 @@ export function IndexPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
               <Stat
                 label="Memories indexed"
                 value={count(result.indexed_memory_count)}
-                hint="One per conversation turn."
                 onSunken
                 accent
               />
@@ -125,23 +118,11 @@ export function IndexPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
                 hint={`≈ ${bytes(footprint)} of float32 vectors, before payloads and the index graph.`}
                 onSunken
               />
-              <Stat
-                label="Collection"
-                value={result.collection}
-                text
-                hint="Cosine distance, keyword index on conversation_id."
-                onSunken
-              />
+              <Stat label="Collection" value={result.collection} text onSunken />
             </StatGrid>
 
             <StatGrid>
-              <Stat
-                label="Encoder"
-                value={result.embedding_model}
-                text
-                hint="Frozen for the whole project. Retrieval never retrains it."
-                onSunken
-              />
+              <Stat label="Encoder" value={result.embedding_model} text onSunken />
               <Stat
                 label="Pinned revision"
                 value={
@@ -151,18 +132,13 @@ export function IndexPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
                   />
                 }
                 text
-                hint="A commit, not a tag — this is what makes a re-run reproducible."
                 onSunken
               />
             </StatGrid>
 
             <Readout>
-              Each turn became one memory, stamped with its session time and speaker,
-              embedded at <strong>{count(result.vector_size)}</strong> dimensions and
-              upserted into <strong>{result.collection}</strong>. Memory construction is
-              deliberately frozen at one-memory-per-turn: the project's only
-              intervention is the query, so anything that changes what is in the store
-              would confound the measurement.
+              Every message is now a searchable memory in{' '}
+              <strong>{result.collection}</strong>. The search page can use it.
             </Readout>
 
             <Callout tone="info" title="Ids are deterministic, so re-indexing is safe">

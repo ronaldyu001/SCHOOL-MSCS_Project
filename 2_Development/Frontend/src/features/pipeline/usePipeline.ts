@@ -1,6 +1,5 @@
 import { useCallback, useReducer, useRef, useState } from 'react'
 import {
-  ApiError,
   createSplit,
   indexDataset,
   loadDataset,
@@ -12,6 +11,7 @@ import {
   type PrepareDatasetResponse,
   type QACategory,
 } from '@/lib/api'
+import { describeError } from '@/lib/useAsyncRun'
 
 export const PHASE_ORDER = ['load', 'split', 'prepare', 'index'] as const
 
@@ -127,11 +127,6 @@ export function proposeSplit(total: number) {
   return { trainSize, validationSize: total - trainSize - testSize, testSize }
 }
 
-function describe(error: unknown): string {
-  if (error instanceof ApiError) return error.message
-  return error instanceof Error ? error.message : 'Unexpected error.'
-}
-
 export function usePipeline() {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE)
   const [settings, setSettings] = useState<PipelineSettings>(DEFAULT_SETTINGS)
@@ -181,7 +176,7 @@ export function usePipeline() {
           phase,
           run: {
             status: 'failed',
-            error: describe(error),
+            error: describeError(error),
             elapsedMs: Math.round(performance.now() - startedAt),
           },
         })

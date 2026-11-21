@@ -8,6 +8,16 @@ The dataset router (`presentation/routes_dataset.py`) exposes four explicit stag
 
 4. `POST /data/{dataset_id}/index` with `{"prepared_id": "<returned prepared ID>", "partition": "train", "batch_size": 64}` embeds and upserts that partition into Qdrant.
 
+Two read-only routes expose what the process is still holding, so a client that lost its
+own state does not have to rerun the pipeline:
+
+- `GET /data/prepared` lists every prepared ID with per-partition conversation and QA
+  counts and the conversation IDs in each.
+- `GET /data/prepared/{prepared_id}/questions?partition=train&conversation_id=...&limit=50`
+  returns that partition's questions with category, annotated answer, and evidence turn
+  IDs already split on `;`. The retrieval harness needs a question and its evidence turns
+  to report recall at all, and R0 is scored against exactly these annotations.
+
 `LoadDataset` uses `DatasetPort` to construct a `Dataset` entity. `CreateDatasetSplit` works only with IDs. `PrepareDataset` accepts that loaded entity and the split, so preparation performs no file access. Prepared partitions are retained for indexing and future evaluation; evaluation has no route yet.
 
 Datasets, splits, and prepared results currently live in application memory. They are lost on restart and are not shared between server workers. Run a single worker for this workflow. A split ID belongs to the dataset ID it was created from.
@@ -46,6 +56,135 @@ The override sets `LLM_DEVICE=gpu`, so `TransformersLLMAdapter` defaults to CUDA
 inside that container. An explicit `device` argument takes precedence. The base
 Compose file defaults to CPU and works on Docker Desktop for Mac.
 
+## Liveness and readiness
+
+`GET /health` answers from the API process alone. It touches nothing else, so it stays
+fast and cannot fail for a reason outside the process; Compose's healthcheck and the
+frontend's status indicator both use it.
+
+`GET /ready` is the stricter question. It reports every dependency the API needs before
+it can serve real work, which today means reaching Qdrant:
+
+```json
+{
+  "ready": true,
+  "dependencies": [
+    {"name": "api", "label": "Backend API", "status": "ok", "detail": "..."},
+    {"name": "memory_store", "label": "Memory store", "status": "ok",
+     "detail": "509 memories indexed in 'memories'."}
+  ],
+  "facts": {"collection": "memories", "indexed_memories": 509, "reader_loaded": false}
+}
+```
+
+The probe never builds the encoder and never loads a checkpoint — it is called while the
+stack is still coming up, so triggering a model download would defeat the point. A
+missing or unreachable store is reported as `unavailable` rather than raised, because a
+readiness endpoint that 500s tells a caller nothing. `reader_loaded` is reported but
+never gates readiness: weights load on first use by design, and waiting for them would
+add minutes to every start.
+
+The desktop loading screen polls this and will not show the console until `ready` is
+true.
+
+## Harness routes
+
+The use cases behind the reward pipeline are reachable over HTTP as well as from the
+command line. All of them load models lazily and share one copy: `presentation/resources.py`
+holds a `ModelCache` with one language model per checkpoint and one `(BGEAdapter,
+QdrantAdapter)` pair per process, and `GenerateText` loads through the same cache, so
+`POST /model/generate` and the harness routes are never two copies of the same weights.
+Construction is serialised, so a second request joins the first load instead of starting
+its own download. Switching checkpoints releases the old model before allocating the new
+one.
+
+### The frozen configuration
+
+`GET /model/info` reports the configured reader and encoder, their pinned revisions, the
+devices, the collection name, the rewrite prompt version, and which checkpoint is
+currently resident — without loading anything. Use it to state the configuration before
+spending minutes on a model.
+
+### Reader and rewriter
+
+- `POST /model/tokens` with `{"text": "...", "max_new_tokens": 64}` counts text in the
+  reader's tokens and reports the context window and whether the prompt plus its output
+  allowance fits. Token budgets are measured in these tokens.
+- `POST /model/rewrite` with `{"text": "...", "input_id": "probe", "seed": 123,
+  "count": 8, "temperature": 0.7, "max_new_tokens": 48}` samples candidate search
+  queries and deduplicates them case-insensitively, so fewer distinct queries than
+  `count` is normal. Each candidate's seed derives from the seed, the input ID and the
+  index, so the same three reproduce the same set.
+- `POST /model/answer` with `{"question": "...", "context": "..."}` answers from a packed
+  context using the R1 reader's prompt. A context that overruns the window returns
+  `fits: false` with `skip_reason: "context_too_long"` and HTTP 200 rather than an error,
+  because R1 treats that as an ineligible input rather than a wrong answer. `abstained`
+  marks the answers R1 scores as zero.
+
+### Retrieval and budget harness
+
+`POST /retrieval/search`:
+
+```json
+{
+  "conversation_id": "conv-26",
+  "queries": ["What hobby did Alice start?", "Alice new hobby"],
+  "top_k": 20,
+  "token_budgets": [128, 256, 512],
+  "expected_turn_ids": ["D1:1", "D1:4"]
+}
+```
+
+Up to eight queries are embedded and searched once each; every budget is then a separate
+pack of the same ranked list, so a budget curve costs no extra search. Each query reports
+its matches with scores and source turns, the rank of the first expected turn, and per
+budget the packed text, the tokens used, the turns carried and evidence recall. When
+expected turns are supplied and there are at least two queries, the response also names
+the winner using the same `select_rewrite` rule the dataset build uses. Optional
+`eligible_turn_ids` restricts the search the way R2 does. Returns 409 when the collection
+does not exist, which means nothing has been indexed yet.
+
+### Reward bank
+
+- `GET /rewards` lists the four scorers with the signal each uses, whether it is
+  label-free, whether it needs questions, and the skip reasons it can report. Served
+  rather than hard-coded in clients so a UI cannot offer a reward this build lacks, and
+  so R0 is labelled as the only scorer that reads evidence annotations.
+- `POST /rewards/select` with `{"scores": [...]}` applies the winner rule and reports the
+  tie count, or `reason: "all_scores_tied"` / `"too_few_candidates"` when no example
+  would be kept.
+- `POST /rewards/evidence` with expected and actual turn IDs returns recall and the
+  matched turns.
+
+### Reward datasets over HTTP
+
+`POST /rewards/datasets`:
+
+```json
+{
+  "prepared_id": "<returned prepared ID>",
+  "partition": "train",
+  "rewards": ["r0", "r1", "r2", "r3"],
+  "max_inputs_per_reward": 4,
+  "candidates": 4,
+  "temperature": 0.7,
+  "top_k": 20,
+  "token_budget": 512
+}
+```
+
+The same pipeline as `presentation/build_reward_datasets.py`: sample candidates, retrieve
+and pack for each, score every candidate with each selected reward, and keep the winner.
+The response carries each reward's attempted/kept counts, the skip histogram, the tie
+count, every kept `prompt`/`completion` pair and one diagnostic row per attempted input.
+
+This route builds pilot datasets from the training partition. It runs synchronously and
+returns 409 if indexing or another reward build is in progress. The request caps
+`max_inputs_per_reward` at 50 and `candidates` at 16. Index the training conversation
+data through `POST /data/{dataset_id}/index` first. R0 and R1 require training questions.
+The command-line builder handles full data runs and writes the manifest. Fine-tuning
+has no HTTP endpoint yet.
+
 ## Build reward datasets
 
 From `2_Development/Deployment`, run a small pilot on the bundled LoCoMo data:
@@ -76,7 +215,7 @@ Use a new output directory for another run.
 - `application/use_cases/retrieval`: query search, context packing, and evidence scoring.
 - `application/use_cases/rewards`: input builders and scorers for R0–R3.
 - `application/use_cases/training`: selecting rewrites and assembling fine-tuning data.
-- `application/use_cases/evaluation`: evaluation use cases.
+- `application/use_cases/evaluation`: evaluation use cases. Empty; no route yet.
 - `application/ports/models`: interfaces for embedding, generation, tokenization, and continuation scoring.
 - `infrastructure/models`: concrete model adapters implementing those interfaces.
 

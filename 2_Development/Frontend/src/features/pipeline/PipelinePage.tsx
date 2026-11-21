@@ -7,12 +7,13 @@ import { IndexPhase } from './phases/IndexPhase'
 import { LoadPhase } from './phases/LoadPhase'
 import { PreparePhase } from './phases/PreparePhase'
 import { SplitPhase } from './phases/SplitPhase'
-import { statusOf, usePipeline } from './usePipeline'
+import { statusOf } from './usePipeline'
 import styles from './PipelinePage.module.css'
 
 export function PipelinePage() {
-  const pipeline = usePipeline()
-  const { health } = useShell()
+  // The pipeline lives in the shell: the sections after this one run against
+  // the ids it produces, so the state has to outlive this route.
+  const { health, pipeline } = useShell()
   const { state } = pipeline
 
   useEffect(() => {
@@ -63,11 +64,9 @@ export function PipelinePage() {
 
       <div className={styles.sectionHead}>
         <div className={styles.sectionIntro}>
-          <h2>Dataset and memory pipeline</h2>
+          <h2>Get the data ready</h2>
           <p className={styles.sectionLede}>
-            Four phases, run in order. Each one hands an id to the next, so re-running a
-            phase clears everything after it — the ids the backend is holding would no
-            longer match.
+            Four steps, in order. Re-running one clears the ones after it.
           </p>
         </div>
         <div className={styles.runControls}>
@@ -78,7 +77,7 @@ export function PipelinePage() {
             disabled={pipeline.busy || health.state === 'offline'}
             onClick={() => void pipeline.runAll()}
           >
-            Run all four phases
+            Run all four
           </Button>
           <Button
             variant="ghost"

@@ -20,7 +20,7 @@ export type RouteDef = {
   status: RouteStatus
   /** One sentence, used as the page lede and the nav tooltip. */
   summary: string
-  /** What this section will own once built. Rendered as the planned checklist. */
+  /** What this section owns. Rendered as the planned checklist when unbuilt. */
   scope: string[]
   /** Which part of the proposal this section implements. */
   proposalRef: string
@@ -30,22 +30,20 @@ export const ROUTES: RouteDef[] = [
   {
     path: '/',
     label: 'Pipeline',
-    title: 'Dataset and memory pipeline',
+    title: 'Pipeline',
     icon: 'layers',
     status: 'built',
-    summary:
-      'Load LoCoMo, split it by conversation, prepare the partitions, and index them into the frozen memory store.',
+    summary: 'Load the dataset, split it, and index it so it can be searched.',
     scope: [],
     proposalRef: 'Approach — Dataset, Memory pipeline',
   },
   {
     path: '/retrieval',
-    label: 'Retrieval',
-    title: 'Retrieval and budget harness',
+    label: 'Search',
+    title: 'Search',
     icon: 'filter',
-    status: 'planned',
-    summary:
-      'Run a query against the indexed store, return memories up to a fixed token budget, and score what came back.',
+    status: 'built',
+    summary: 'Ask a question and see which memories come back.',
     scope: [
       'Embed a query with the frozen encoder and search one conversation',
       'Truncate the retrieved set at a fixed token budget',
@@ -56,12 +54,11 @@ export const ROUTES: RouteDef[] = [
   },
   {
     path: '/rewards',
-    label: 'Rewards',
-    title: 'Reward bank',
+    label: 'Scoring',
+    title: 'Scoring',
     icon: 'split',
-    status: 'planned',
-    summary:
-      'Three label-free scorers plus the supervised ceiling, behind one interface, so the training signal is a config change.',
+    status: 'built',
+    summary: 'Four ways to judge whether a rewrite found the right memories.',
     scope: [
       'R1 — full-context teacher: agreement between a retrieval-grounded answer and a whole-conversation answer',
       'R2 — masked-turn prediction: how much the retrieved set helps predict a hidden message',
@@ -71,18 +68,16 @@ export const ROUTES: RouteDef[] = [
     proposalRef: 'Approach — Reward bank',
   },
   {
-    path: '/training',
-    label: 'Training',
-    title: 'Candidate factory and training loop',
+    path: '/training-data',
+    label: 'Training data',
+    title: 'Training data',
     icon: 'refresh',
-    status: 'planned',
-    summary:
-      'Generate several rewrites per question, score them, keep the winners, and fine-tune on those with LoRA.',
+    status: 'built',
+    summary: 'Write rewrites, score them, and keep the best ones to train on.',
     scope: [
       'Sample candidate rewrites with randomised decoding so they differ from each other',
       'Score every candidate with the selected reward',
       'Assemble the kept rewrites into a fine-tuning set',
-      'Run the LoRA fine-tune and record the config and seed',
     ],
     proposalRef: 'Approach — Candidate factory and training loop',
   },
@@ -92,8 +87,7 @@ export const ROUTES: RouteDef[] = [
     title: 'Evaluation ladder',
     icon: 'arrow',
     status: 'planned',
-    summary:
-      'Six configurations on the held-out test split, reported per question category over a range of token budgets.',
+    summary: 'Compare every setup on the held-out test split.',
     scope: [
       'Budget curves for all six ladder steps on the held-out test split',
       'Per-category breakdown: single-hop, multi-hop, temporal, open-domain',
@@ -103,13 +97,3 @@ export const ROUTES: RouteDef[] = [
     proposalRef: 'Evaluation',
   },
 ]
-
-/** The six configurations compared in the evaluation ladder. */
-export const LADDER = [
-  { step: 0, name: 'Raw message', note: 'Embedded as-is. The status quo.' },
-  { step: 1, name: 'Prompted rewrite', note: 'Small model, no training.' },
-  { step: 2, name: 'Trained on R1', note: 'Full-context teacher.' },
-  { step: 3, name: 'Trained on R2', note: 'Masked-turn prediction.' },
-  { step: 4, name: 'Trained on R3', note: 'Synthetic evidence.' },
-  { step: 5, name: 'Trained on R0', note: 'Gold labels. Supervised ceiling.' },
-] as const

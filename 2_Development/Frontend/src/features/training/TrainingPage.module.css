@@ -1,0 +1,35 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.lede {
+  max-inline-size: var(--measure);
+  color: var(--fg-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+
+.hint {
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+
+.rewardName {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.rewardTitle {
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  color: var(--fg-faint);
+}
+
+.caveat {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+}

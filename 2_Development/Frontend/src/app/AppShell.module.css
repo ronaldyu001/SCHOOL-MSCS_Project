@@ -209,3 +209,10 @@
     padding-inline: var(--space-4);
   }
 }
+
+/* Host RAM, beside the footer attribution. Every expensive object in this
+   project lives in one backend process, so the headroom is worth stating. */
+.hostMemory {
+  color: var(--fg-faint);
+  white-space: nowrap;
+}

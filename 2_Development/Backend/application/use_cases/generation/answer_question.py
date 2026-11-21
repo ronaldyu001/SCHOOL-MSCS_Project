@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+import re
+
 from application.ports.models import LLMPort, TokenizerPort
 
 
@@ -8,6 +11,11 @@ Conversation:
 
 Question: {question}
 Answer:"""
+
+
+def answer_abstained(answer: str) -> bool:
+    words = " ".join(re.findall(r"[^\W_]+", answer.strip().casefold()))
+    return words in {"", "insufficient context", "i don t know", "i do not know"}
 
 
 class AnswerQuestion:
@@ -31,3 +39,29 @@ class AnswerQuestion:
             prompt, max_new_tokens=self._max_new_tokens, temperature=0.0
         ).strip()
         return answer.split("\n", 1)[0].strip()
+
+
+@dataclass(frozen=True)
+class ContextAnswer:
+    answer: str | None
+    fits: bool
+    skip_reason: str | None
+    abstained: bool
+    context_tokens: int
+    context_window: int | None
+
+
+class AnswerFromContext:
+    def __init__(self, reader: AnswerQuestion, tokenizer: TokenizerPort) -> None:
+        self._reader = reader
+        self._tokenizer = tokenizer
+
+    def execute(self, question: str, context: str) -> ContextAnswer:
+        count = self._tokenizer.count_tokens(context)
+        window = self._tokenizer.context_window
+        if not context.strip():
+            return ContextAnswer(None, True, "empty_context", False, count, window)
+        if not self._reader.fits(question, context):
+            return ContextAnswer(None, False, "context_too_long", False, count, window)
+        answer = self._reader.execute(question, context)
+        return ContextAnswer(answer, True, None, answer_abstained(answer), count, window)

@@ -5,12 +5,11 @@ from application.ports.models import LLMPort
 
 
 class GenerateText:
-    """Reuse the most recently requested model within this process."""
+    """Generate from a model supplied by the application's model provider."""
 
-    def __init__(self, load_model: Callable[[str, str | None], LLMPort]) -> None:
-        self._load_model = load_model
+    def __init__(self, get_model: Callable[[str, str | None], LLMPort]) -> None:
+        self._get_model = get_model
         self._lock = Lock()
-        self._loaded: tuple[tuple[str, str | None], LLMPort] | None = None
 
     def execute(
         self,
@@ -20,14 +19,10 @@ class GenerateText:
         revision: str | None = None,
         max_new_tokens: int = 128,
         temperature: float = 0.0,
+        seed: int | None = None,
     ) -> str:
-        key = (model_id, revision)
-        # A switch waits for in-flight generation and releases the old model first.
         with self._lock:
-            if self._loaded is None or self._loaded[0] != key:
-                self._loaded = None
-                self._loaded = (key, self._load_model(model_id, revision))
-            _, model = self._loaded
+            model = self._get_model(model_id, revision)
             return model.generate(
-                prompt, max_new_tokens=max_new_tokens, temperature=temperature
+                prompt, max_new_tokens=max_new_tokens, temperature=temperature, seed=seed
             )

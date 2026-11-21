@@ -157,3 +157,64 @@
 .check:has(input:checked) .checkTag {
   color: var(--accent-fg);
 }
+
+/* Textarea — same control surface, resizable in the block direction only, so a
+   long prompt can be opened up without the column width shifting. */
+.textarea {
+  min-height: 4.5rem;
+  padding: var(--space-2) var(--space-3);
+  line-height: var(--leading-normal);
+  resize: vertical;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+}
+
+/* Chip row — one-tap values for the field beneath it. */
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chipButton {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
+  padding: 0.1875rem var(--space-2);
+  background-color: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.chipButton:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.chipButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chipButton[aria-pressed='true'],
+.chipButtonOn {
+  background-color: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-fg);
+}
+
+.chipButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

@@ -1,0 +1,72 @@
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background-color: var(--raised);
+  border: 1px solid var(--border-subtle);
+  border-block-start: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+}
+
+/* The one that uses the answer key reads as a reference point, not a result. */
+.ceiling {
+  border-block-start-color: var(--border-strong);
+  background-color: var(--sunken);
+}
+
+.cardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.id {
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent-fg);
+}
+
+.ceiling .id {
+  color: var(--fg-muted);
+}
+
+.tagGood,
+.tagWarn {
+  font-size: var(--text-2xs);
+  padding: 0.0625rem var(--space-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--done-line);
+  background-color: var(--done-soft);
+  color: var(--done);
+}
+
+.tagWarn {
+  border-color: var(--border);
+  background-color: transparent;
+  color: var(--fg-faint);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-base);
+}
+
+.summary {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+}

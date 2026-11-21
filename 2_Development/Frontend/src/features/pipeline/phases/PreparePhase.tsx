@@ -64,20 +64,15 @@ export function PreparePhase({
       id="phase-prepare"
       step={3}
       title="Prepare the partitions"
-      purpose="Materialise each partition's conversations and questions, apply the category filter, and assert that the dataset and the split agree."
-      endpoint="POST /data/{dataset_id}/prepare"
+      purpose="Group the conversations and questions by partition, and check everything lines up."
       status={statusOf(run, split === null)}
-      blockedReason={
-        split
-          ? undefined
-          : 'Create a split first. Preparation assembles the conversations and questions per partition, so it needs the split that assigns them.'
-      }
+      blockedReason={split ? undefined : 'Make a split first.'}
       startedAt={run.status === 'running' ? run.startedAt : null}
       elapsedMs={
         run.status === 'done' || run.status === 'failed' ? run.elapsedMs : undefined
       }
       error={run.status === 'failed' ? run.error : undefined}
-      runningNote="Checking dataset and split integrity, then grouping conversations and their questions into the three partitions."
+      runningNote="Checking and grouping."
       controls={
         <PhaseControls
           preview={
@@ -178,7 +173,6 @@ export function PreparePhase({
                 label="Prepared id"
                 value={<CopyValue value={result.prepared_id} label="prepared id" />}
                 text
-                hint="Required by indexing in phase 4."
                 onSunken
               />
             </StatGrid>
@@ -186,19 +180,13 @@ export function PreparePhase({
             <Readout>
               {loaded && retained < loaded.qa_count ? (
                 <>
-                  The filter kept <strong>{count(retained)}</strong> of{' '}
-                  <strong>{count(loaded.qa_count)}</strong> questions. Note that the
-                  conversations did not change, so the memory store built in phase 4 is
-                  the same either way — the filter decides which questions get asked of
-                  it, not what it contains.
+                  Kept <strong>{count(retained)}</strong> of{' '}
+                  <strong>{count(loaded.qa_count)}</strong> questions. The filter only
+                  changes which questions get asked, not what goes into the store.
                 </>
               ) : (
                 <>
-                  All <strong>{count(retained)}</strong> questions were kept, grouped
-                  with the conversations they belong to. Because the filter only narrows
-                  questions, the memory store built in phase 4 is identical under any
-                  filter — which is one of the things the frozen harness needs to be
-                  true.
+                  All <strong>{count(retained)}</strong> questions are in.
                 </>
               )}
             </Readout>

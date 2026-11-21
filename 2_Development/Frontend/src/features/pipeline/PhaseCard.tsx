@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import {
   Callout,
+  Disclosure,
   Icon,
   Panel,
   PanelHeader,
@@ -19,8 +20,6 @@ type PhaseCardProps = {
   title: string
   /** What the phase is for, in one sentence. */
   purpose: string
-  /** The route this phase calls, shown so the screen stays traceable to the API. */
-  endpoint: string
   status: PhaseStatus
   /** Why the phase cannot run yet. Shown instead of leaving a dead button. */
   blockedReason?: string
@@ -39,7 +38,6 @@ export function PhaseCard({
   step,
   title,
   purpose,
-  endpoint,
   status,
   blockedReason,
   runningNote,
@@ -61,11 +59,7 @@ export function PhaseCard({
     >
       <PanelHeader
         id={headingId}
-        eyebrow={
-          <>
-            Phase {step} <span className={styles.endpoint}>· {endpoint}</span>
-          </>
-        }
+        eyebrow={`Step ${step}`}
         title={title}
         description={purpose}
         aside={<StatusBadge status={status} />}
@@ -78,9 +72,15 @@ export function PhaseCard({
               {blockedReason}
             </Callout>
           ) : null}
-          {controls}
+          {/* A step you cannot run yet shows why, not a form you cannot use.
+              A finished one tucks its form away so the result is what you see. */}
+          {blockedReason ? null : status === 'done' ? (
+            <Disclosure summary="Settings">{controls}</Disclosure>
+          ) : (
+            controls
+          )}
           {status === 'failed' && error ? (
-            <Callout tone="error" title="The backend rejected this run" role="alert">
+            <Callout tone="error" title="That didn't work" role="alert">
               <p>{error}</p>
             </Callout>
           ) : null}

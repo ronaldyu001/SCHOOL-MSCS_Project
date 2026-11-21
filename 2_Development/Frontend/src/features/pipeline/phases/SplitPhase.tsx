@@ -86,20 +86,19 @@ export function SplitPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
       id="phase-split"
       step={2}
       title="Split by conversation"
-      purpose="Shuffle the conversation ids with a fixed seed and cut them into train, validation and test. A conversation belongs to exactly one partition."
-      endpoint="POST /data/{dataset_id}/splits"
+      purpose="Divide the conversations into train, validation and test. Each conversation goes to exactly one."
       status={statusOf(run, loaded === null)}
       blockedReason={
         loaded
           ? undefined
-          : 'Load a dataset first. A split has to account for exactly the conversations the dataset contains, so the sizes cannot be chosen before the count is known.'
+          : 'Load a dataset first, so the sizes have something to add up to.'
       }
       startedAt={run.status === 'running' ? run.startedAt : null}
       elapsedMs={
         run.status === 'done' || run.status === 'failed' ? run.elapsedMs : undefined
       }
       error={run.status === 'failed' ? run.error : undefined}
-      runningNote="Sorting the ids, shuffling them with the seed, and slicing the three partitions."
+      runningNote="Splitting."
       controls={
         <PhaseControls
           inputs={
@@ -224,37 +223,26 @@ export function SplitPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
             <AllocationBar segments={actual} total={total} unit="conv" />
 
             <StatGrid>
-              <Stat
-                label="Seed"
-                value={result.seed}
-                hint="Reproduces this exact partition."
-                onSunken
-                accent
-              />
+              <Stat label="Seed" value={result.seed} onSunken accent />
               <Stat
                 label="Held out for test"
                 value={result.test_conversation_ids.length}
                 unit={`of ${total}`}
-                hint="Every ladder number is measured here."
                 onSunken
               />
               <Stat
                 label="Split id"
                 value={<CopyValue value={result.split_id} label="split id" />}
                 text
-                hint="Passed to prepare in phase 3."
                 onSunken
               />
             </StatGrid>
 
             <Readout>
-              Seed <strong>{result.seed}</strong> sorted the ids, shuffled them, and cut
-              them into <strong>{result.train_conversation_ids.length}</strong> /{' '}
+              Split into <strong>{result.train_conversation_ids.length}</strong> /{' '}
               <strong>{result.validation_conversation_ids.length}</strong> /{' '}
-              <strong>{result.test_conversation_ids.length}</strong>. Sorting before
-              shuffling is what makes this deterministic — the same seed always produces
-              the same partition, so a repeat run is comparable and a different seed is
-              a genuinely different sample.
+              <strong>{result.test_conversation_ids.length}</strong> using seed{' '}
+              <strong>{result.seed}</strong>. The same seed always gives the same split.
             </Readout>
 
             <Callout tone="info">

@@ -1,0 +1,58 @@
+.pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  inline-size: 100%;
+  max-inline-size: 22rem;
+  padding: var(--space-1) var(--space-2);
+  text-align: start;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.pick:hover {
+  border-color: var(--border);
+  background-color: var(--canvas);
+}
+
+.pickOn {
+  border-color: var(--accent-line);
+  background-color: var(--accent-soft);
+}
+
+.pick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pickRole {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-faint);
+}
+
+.pickOn .pickRole {
+  color: var(--accent-fg);
+}
+
+.pickQuery {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.note {
+  color: var(--fg-muted);
+}
+
+.note code {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+}

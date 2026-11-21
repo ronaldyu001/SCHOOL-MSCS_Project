@@ -21,15 +21,14 @@ export function LoadPhase({ pipeline }: { pipeline: ReturnType<typeof usePipelin
       id="phase-load"
       step={1}
       title="Load the dataset"
-      purpose="Parse LoCoMo into conversations and questions, and hold them in backend memory under a dataset id the later phases refer to."
-      endpoint="POST /data/load"
+      purpose="Read the LoCoMo file into conversations and questions."
       status={statusOf(run, false)}
       startedAt={run.status === 'running' ? run.startedAt : null}
       elapsedMs={
         run.status === 'done' || run.status === 'failed' ? run.elapsedMs : undefined
       }
       error={run.status === 'failed' ? run.error : undefined}
-      runningNote="Reading the JSON and building conversations, sessions, turns and QA entries. Nothing is embedded at this stage."
+      runningNote="Reading the file."
       controls={
         <PhaseControls
           inputs={
@@ -41,7 +40,6 @@ export function LoadPhase({ pipeline }: { pipeline: ReturnType<typeof usePipelin
               autoComplete="off"
               disabled={busy}
               onChange={(event) => update('path', event.target.value)}
-              hint="Resolved by the backend, not the browser. Under docker-compose the dataset is mounted read-only at /data; running the backend directly, use a path relative to the Backend directory such as ../.data/locomo10.json."
             />
           }
           action={
@@ -64,20 +62,13 @@ export function LoadPhase({ pipeline }: { pipeline: ReturnType<typeof usePipelin
               <Stat
                 label="Conversations"
                 value={count(result.conversation_count)}
-                hint="Each is a multi-session history between two speakers."
                 onSunken
                 accent
               />
-              <Stat
-                label="Questions"
-                value={count(result.qa_count)}
-                hint="Across all categories, before any filtering."
-                onSunken
-              />
+              <Stat label="Questions" value={count(result.qa_count)} onSunken />
               <Stat
                 label="Questions per conversation"
                 value={ratio(result.qa_count, result.conversation_count)}
-                hint="Mean. Evaluation reports per category, not per conversation."
                 onSunken
               />
               <Stat
@@ -90,13 +81,9 @@ export function LoadPhase({ pipeline }: { pipeline: ReturnType<typeof usePipelin
             </StatGrid>
 
             <Readout>
-              Parsed <strong>{count(result.conversation_count)}</strong> conversations
-              and <strong>{count(result.qa_count)}</strong> questions. Everything
-              downstream works at conversation granularity, so a conversation is
-              assigned to exactly one partition and its questions travel with it — that
-              is what keeps the test split genuinely held out. Question categories are
-              not counted here; they are only resolved once the filter is applied in
-              phase 3.
+              Read <strong>{count(result.conversation_count)}</strong> conversations and{' '}
+              <strong>{count(result.qa_count)}</strong> questions. Questions stay with
+              their conversation, so the test split stays genuinely unseen.
             </Readout>
 
             <Disclosure

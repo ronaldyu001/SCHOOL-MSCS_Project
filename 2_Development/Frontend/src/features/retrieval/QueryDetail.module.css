@@ -1,0 +1,107 @@
+.budgetRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-block-end: var(--space-4);
+}
+
+.contextHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.subhead {
+  margin: 0;
+  font-size: var(--text-base);
+}
+
+.context {
+  margin: 0;
+  padding: var(--space-3);
+  max-block-size: 20rem;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background-color: var(--sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.answer {
+  font-size: var(--text-base);
+}
+
+.memories {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.memory {
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--raised);
+  border: 1px solid var(--border-subtle);
+  border-inline-start: 3px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* Inside the budget and expected-evidence are different facts, so they are
+   drawn on different edges rather than competing for one colour. */
+.packed {
+  border-inline-start-color: var(--accent);
+}
+
+.hit {
+  background-color: var(--done-soft);
+}
+
+.memoryHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+}
+
+.rank {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.flags {
+  display: flex;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+.flagPacked {
+  color: var(--accent-fg);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-full);
+}
+
+.flagHit {
+  color: var(--done);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--done-line);
+  border-radius: var(--radius-full);
+}
+
+.memoryText {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}

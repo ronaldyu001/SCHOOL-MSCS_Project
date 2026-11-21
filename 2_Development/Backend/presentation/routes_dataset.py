@@ -1,20 +1,24 @@
 import logging
+from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
 from typing import Dict, List, Literal, Optional, Tuple
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from application.use_cases.dataset import CreateDatasetSplit, IndexDataset, LoadDataset, PrepareDataset
-from domain.entities import Dataset, DatasetSplit, QACategory
+from application.use_cases.dataset.list_questions import ListQuestions
+from domain.entities import Dataset, DatasetPartition, DatasetSplit, PreparedDataset, QACategory
 from infrastructure.dataset.locomo_adapter import LoCoMoAdapter
 from infrastructure.config import config
 
+from .resources import memory_resources
+
 router = APIRouter(prefix="/data", tags=["data"])
 logger = logging.getLogger(__name__)
-_index_lock = Lock()
+memory_index_lock = Lock()
 
 
 class LoadDatasetRequest(BaseModel):
@@ -51,11 +55,106 @@ def splits(request: Request) -> Dict[str, Tuple[str, DatasetSplit]]:
     return request.app.state.dataset_splits
 
 
+def prepared_datasets(request: Request) -> Dict[str, PreparedDataset]:
+    if not hasattr(request.app.state, "prepared_datasets"):
+        request.app.state.prepared_datasets = {}
+    return request.app.state.prepared_datasets
+
+
+def prepared_owners(request: Request) -> Dict[str, str]:
+    if not hasattr(request.app.state, "prepared_dataset_owners"):
+        request.app.state.prepared_dataset_owners = {}
+    return request.app.state.prepared_dataset_owners
+
+
+def get_prepared(request: Request, prepared_id: str) -> PreparedDataset:
+    """The prepared dataset behind an id, or a 404 explaining how to get one."""
+    prepared = prepared_datasets(request).get(prepared_id)
+    if prepared is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Prepared dataset not found. Run load, split and prepare first.",
+        )
+    return prepared
+
+
+def partition_of(prepared: PreparedDataset, name: str) -> DatasetPartition:
+    return getattr(prepared, name)
+
+
+def require_indexed_partition(
+    request: Request, prepared_id: str, partition: DatasetPartition
+) -> None:
+    owner = prepared_owners(request).get(prepared_id)
+    indexed = getattr(request.app.state, "indexed_conversation_owners", {})
+    if owner is None or any(indexed.get(item.id) != owner for item in partition.conversations):
+        raise HTTPException(
+            status_code=409, detail="Index this prepared dataset's training partition first."
+        )
+
+
 def get_dataset(request: Request, dataset_id: str) -> Dataset:
     dataset = datasets(request).get(dataset_id)
     if dataset is None:
         raise HTTPException(status_code=404, detail="Dataset not found. Load it first.")
     return dataset
+
+
+@router.get("/prepared")
+def list_prepared(request: Request) -> list[dict]:
+    """Prepared ids still held in this process, newest last.
+
+    Browser state is lost on reload but this is not, so the harness pages can
+    offer what the backend still has rather than making the user rerun phase 3.
+    """
+    owners = prepared_owners(request)
+    return [
+        {
+            "prepared_id": prepared_id,
+            "dataset_id": owners.get(prepared_id),
+            "partitions": {
+                name: {
+                    "conversation_count": len(partition.conversations),
+                    "qa_count": len(partition.qa),
+                    "conversation_ids": [item.id for item in partition.conversations],
+                }
+                for name, partition in (
+                    ("train", prepared.train),
+                    ("validation", prepared.validation),
+                    ("test", prepared.test),
+                )
+            },
+        }
+        for prepared_id, prepared in prepared_datasets(request).items()
+    ]
+
+
+@router.get("/prepared/{prepared_id}/questions")
+def list_questions(
+    prepared_id: str,
+    request: Request,
+    partition: Literal["train", "validation", "test"] = "train",
+    conversation_id: Optional[str] = None,
+    limit: int = Query(default=50, ge=1, le=500),
+) -> dict:
+    """Questions from one prepared partition, with their evidence annotations.
+
+    The retrieval harness needs a real question and the turns that answer it to
+    report recall at all, and R0 is defined against exactly these annotations.
+    They are served from the prepared partition rather than re-read from disk,
+    so the category filter applied in phase 3 still holds.
+    """
+    prepared = get_prepared(request, prepared_id)
+    page = ListQuestions().execute(
+        partition_of(prepared, partition), conversation_id=conversation_id, limit=limit
+    )
+    return {
+        "prepared_id": prepared_id,
+        "partition": partition,
+        "conversation_id": conversation_id,
+        "total": page.total,
+        "questions": [asdict(qa) for qa in page.questions],
+    }
 
 
 @router.post("/load", status_code=201)
@@ -112,13 +211,9 @@ def prepare_dataset(dataset_id: str, body: PrepareDatasetRequest, request: Reque
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error))
     # Retain the prepared data for subsequent indexing/evaluation stages.
-    if not hasattr(request.app.state, "prepared_datasets"):
-        request.app.state.prepared_datasets = {}
     prepared_id = str(uuid4())
-    request.app.state.prepared_datasets[prepared_id] = prepared
-    if not hasattr(request.app.state, "prepared_dataset_owners"):
-        request.app.state.prepared_dataset_owners = {}
-    request.app.state.prepared_dataset_owners[prepared_id] = dataset_id
+    prepared_datasets(request)[prepared_id] = prepared
+    prepared_owners(request)[prepared_id] = dataset_id
     return {
         "dataset_id": dataset_id,
         "split_id": body.split_id,
@@ -142,29 +237,22 @@ def prepare_dataset(dataset_id: str, body: PrepareDatasetRequest, request: Reque
 @router.post("/{dataset_id}/index")
 def index_dataset(dataset_id: str, body: IndexDatasetRequest, request: Request) -> dict:
     get_dataset(request, dataset_id)
-    owners = getattr(request.app.state, "prepared_dataset_owners", {})
-    prepared = getattr(request.app.state, "prepared_datasets", {}).get(body.prepared_id)
-    if prepared is None or owners.get(body.prepared_id) != dataset_id:
+    prepared = prepared_datasets(request).get(body.prepared_id)
+    if prepared is None or prepared_owners(request).get(body.prepared_id) != dataset_id:
         raise HTTPException(status_code=404, detail="Prepared dataset not found for this dataset.")
-    partition = getattr(prepared, body.partition)
+    partition = partition_of(prepared, body.partition)
 
     # Serialize indexing within this process, including first-time model/collection setup.
-    with _index_lock:
+    with memory_index_lock:
         try:
-            if not hasattr(request.app.state, "dataset_indexer"):
-                from infrastructure.models.embedding import BGEAdapter
-                from infrastructure.memory_store import QdrantAdapter
-
-                embedder = BGEAdapter()
-                store = QdrantAdapter.from_config(vector_size=embedder.vector_size)
-                try:
-                    store.ensure_collection()
-                except Exception:
-                    store.client.close()
-                    raise
-                request.app.state.dataset_indexer = IndexDataset(embedder, store)
-            indexer = request.app.state.dataset_indexer
+            embedder, store = memory_resources(request, ensure_collection=True)
+            indexer = IndexDataset(embedder, store)
+            indexed = getattr(request.app.state, "indexed_conversation_owners", {})
+            request.app.state.indexed_conversation_owners = indexed
+            for conversation in partition.conversations:
+                indexed.pop(conversation.id, None)
             indexed_count = indexer.execute(partition.conversations, batch_size=body.batch_size)
+            indexed.update((conversation.id, dataset_id) for conversation in partition.conversations)
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         except Exception as error:

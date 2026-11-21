@@ -31,10 +31,6 @@
   --stripe: var(--failed);
 }
 
-.endpoint {
-  color: var(--fg-faint);
-}
-
 .controls {
   display: flex;
   flex-direction: column;

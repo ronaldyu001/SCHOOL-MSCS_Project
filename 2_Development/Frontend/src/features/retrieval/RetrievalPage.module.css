@@ -1,0 +1,26 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.lede {
+  max-inline-size: var(--measure);
+  color: var(--fg-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+
+.hint {
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+
+.provenance {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}

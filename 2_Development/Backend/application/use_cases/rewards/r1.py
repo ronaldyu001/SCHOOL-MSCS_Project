@@ -3,6 +3,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from functools import cache
 
+from application.use_cases.generation.answer_question import answer_abstained
 from application.use_cases.retrieval import BuiltContext
 from domain.entities import Conversation
 
@@ -12,11 +13,6 @@ from .turns import conversation_turns
 
 def _normalized_tokens(answer: str) -> Counter[str]:
     return Counter(re.findall(r"[^\W_]+", answer.casefold()))
-
-
-def _abstains(answer: str) -> bool:
-    words = " ".join(re.findall(r"[^\W_]+", answer.strip().casefold()))
-    return words in {"", "insufficient context", "i don t know", "i do not know"}
 
 
 class R1Builder:
@@ -63,7 +59,7 @@ class R1Builder:
             if not self._fits(question, history):
                 raise RewardInputSkipped("full_history_too_long")
             answer = self._answer(question, history)
-            if _abstains(answer):
+            if answer_abstained(answer):
                 raise RewardInputSkipped("teacher_abstained")
             tokens = _normalized_tokens(answer)
             return tokens, tokens.total()
@@ -75,7 +71,7 @@ class R1Builder:
             if not self._fits(question, context.text):
                 raise RewardInputSkipped("retrieved_context_too_long")
             answer = self._answer(question, context.text)
-            if _abstains(answer):
+            if answer_abstained(answer):
                 return 0.0
             actual = _normalized_tokens(answer)
             return 2 * (expected & actual).total() / (expected_count + actual.total())

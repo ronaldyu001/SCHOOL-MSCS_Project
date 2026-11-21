@@ -3,6 +3,8 @@ import styles from './Table.module.css'
 
 type DataTableProps = {
   caption: string
+  /** Header for the row-header column. */
+  rowHeader?: string
   columns: string[]
   rows: {
     key: string
@@ -14,14 +16,20 @@ type DataTableProps = {
   footer?: { header: ReactNode; cells: ReactNode[] }
 }
 
-export function DataTable({ caption, columns, rows, footer }: DataTableProps) {
+export function DataTable({
+  caption,
+  rowHeader = 'Partition',
+  columns,
+  rows,
+  footer,
+}: DataTableProps) {
   return (
     <div className={styles.scroll}>
       <table className={styles.table}>
         <caption className={styles.caption}>{caption}</caption>
         <thead>
           <tr>
-            <th scope="col">Partition</th>
+            <th scope="col">{rowHeader}</th>
             {columns.map((column) => (
               <th key={column} scope="col">
                 {column}

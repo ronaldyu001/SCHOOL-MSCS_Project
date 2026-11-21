@@ -1,6 +1,7 @@
 from collections.abc import Iterable, Iterator
 
 from application.use_cases.retrieval import BuiltContext, score_evidence
+from application.use_cases.retrieval.score_evidence import normalize_evidence_ids
 from domain.entities import QA, Conversation
 
 from .reward_input import RewardInput, RewardSkip
@@ -28,12 +29,7 @@ class R0Builder:
                 continue
 
             # Some LoCoMo rows put several semicolon-separated IDs in one field.
-            gold = frozenset(
-                part.strip()
-                for entry in qa.evidence_turn_ids
-                for part in entry.split(";")
-                if part.strip()
-            )
+            gold = frozenset(normalize_evidence_ids(qa.evidence_turn_ids))
             if not gold:
                 yield RewardSkip(qa.id, "missing_evidence")
                 continue

@@ -9,14 +9,13 @@ from tempfile import TemporaryDirectory
 from application.use_cases.dataset import (
     CreateDatasetSplit, IndexDataset, LoadDataset, PrepareDataset,
 )
-from application.use_cases.generation import AnswerQuestion, RewriteQuery
 from application.use_cases.generation.rewrite_query import REWRITE_PROMPT_VERSION
-from application.use_cases.retrieval import BuildContext, RetrieveMemories
-from application.use_cases.rewards import R0Builder, R1Builder, R2Builder, R3Builder, TrainingQuestion
 from application.use_cases.training.build_reward_dataset import (
-    BuildRewardDataset,
     RewardBuildSettings,
     RewardDataset,
+)
+from application.use_cases.training.build_reward_datasets import (
+    REWARD_IDS, REWARD_PIPELINE_VERSION, BuildRewardDatasets,
 )
 from infrastructure.config import config
 from infrastructure.dataset.locomo_adapter import LoCoMoAdapter
@@ -36,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--split-seed", type=int, default=config.dataset_split_seed)
     parser.add_argument("--seed", type=int, default=defaults.seed)
     parser.add_argument(
-        "--rewards", nargs="+", choices=("r0", "r1", "r2", "r3"), default=("r0", "r1", "r2", "r3")
+        "--rewards", nargs="+", choices=REWARD_IDS, default=REWARD_IDS
     )
     parser.add_argument("--candidates", type=int, default=defaults.candidates)
     parser.add_argument("--temperature", type=float, default=defaults.temperature)
@@ -101,6 +100,7 @@ def main() -> None:
         seed=args.split_seed,
     )
     train = PrepareDataset().execute(dataset, split).train
+    BuildRewardDatasets.validate_inputs(train, args.rewards)
 
     index_settings = {
         "corpus_sha256": corpus_sha,
@@ -114,26 +114,6 @@ def main() -> None:
     collection = f"{config.qdrant_collection}_train_{index_key[:24]}"
 
     llm = TransformersLLMAdapter(args.model_id, revision=args.model_revision)
-    answer = AnswerQuestion(llm, llm)
-    inputs = {}
-    for reward in args.rewards:
-        if reward == "r0":
-            inputs[reward] = R0Builder().execute(train.conversations, train.qa)
-        elif reward == "r1":
-            questions = (
-                TrainingQuestion(qa.id, qa.conversation_id, qa.question) for qa in train.qa
-            )
-            inputs[reward] = R1Builder(answer.execute, answer.fits).execute(
-                train.conversations, questions
-            )
-        elif reward == "r2":
-            inputs[reward] = R2Builder(llm.mean_log_probability).execute(
-                train.conversations, seed=settings.seed
-            )
-        elif reward == "r3":
-            inputs[reward] = R3Builder(
-                lambda prompt: llm.generate(prompt, max_new_tokens=64)
-            ).execute(train.conversations, seed=settings.seed)
 
     embedder = BGEAdapter()
     store = QdrantAdapter.from_config(embedder.vector_size, collection_name=collection)
@@ -148,11 +128,10 @@ def main() -> None:
         )
         if not indexed:
             raise ValueError("The training partition contains no turns to index.")
-        print(f"Scoring rewrites for {', '.join(inputs)}.", flush=True)
-        datasets = BuildRewardDataset(
-            RewriteQuery(llm), RetrieveMemories(embedder, store), BuildContext(llm.count_tokens),
-            settings,
-        ).execute(inputs)
+        print(f"Scoring rewrites for {', '.join(args.rewards)}.", flush=True)
+        datasets = BuildRewardDatasets(llm, llm, llm, embedder, store).execute(
+            train, args.rewards, settings
+        )
     finally:
         store.client.close()
 
@@ -167,7 +146,7 @@ def main() -> None:
         "device": getenv("LLM_DEVICE", "cpu"),
         "embedding_device": config.embedding_device,
         "embedding_query_instruction": config.embedding_query_instruction,
-        "reward_pipeline_version": 1,
+        "reward_pipeline_version": REWARD_PIPELINE_VERSION,
         "rewrite_prompt_version": REWRITE_PROMPT_VERSION,
         "settings": asdict(settings),
         "collection": collection,
