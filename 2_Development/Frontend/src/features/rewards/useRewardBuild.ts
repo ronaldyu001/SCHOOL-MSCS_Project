@@ -61,14 +61,20 @@ export const BUILD_DEFAULTS: BuildSettings = {
  */
 export function estimateCalls(settings: BuildSettings, counts?: PreparedPartition) {
   const limit = settings.maxInputsPerReward
-  const questionInputs = Math.min(limit ?? Infinity, counts?.qa_count ?? limit ?? Infinity)
-  const turnInputs = Math.min(limit ?? Infinity, counts?.turn_count ?? limit ?? Infinity)
+  const questionInputs = Math.min(
+    limit ?? Infinity,
+    counts?.qa_count ?? limit ?? Infinity,
+  )
+  const turnInputs = Math.min(
+    limit ?? Infinity,
+    counts?.turn_count ?? limit ?? Infinity,
+  )
   const r0 = settings.rewards.includes('r0')
   const r1 = settings.rewards.includes('r1')
   const r2 = settings.rewards.includes('r2')
   const r3 = settings.rewards.includes('r3')
-  const candidateSets = (r0 || r1 ? questionInputs : 0) +
-    (r2 ? turnInputs : 0) + (r3 ? turnInputs : 0)
+  const candidateSets =
+    (r0 || r1 ? questionInputs : 0) + (r2 ? turnInputs : 0) + (r3 ? turnInputs : 0)
   const rewrites = candidateSets * settings.candidates
   // R1 answers once from the full history and once per candidate context; R2
   // scores one baseline continuation plus one per candidate; R3 writes one
@@ -179,27 +185,31 @@ export function useRewardBuild(
     setStopRequested(false)
     setStopError(null)
     return build.run(() =>
-      buildRewardDatasets({
-        preparedId: current.preparedId.trim(),
-        rewards: current.rewards,
-        maxInputsPerReward: current.maxInputsPerReward,
-        keepAllOneTies: current.rewards.includes('r0') && current.keepAllOneTies,
-        seed: current.seed,
-        candidates: current.candidates,
-        temperature: current.temperature,
-        rewriteMaxTokens: current.rewriteMaxTokens,
-        topK: current.topK,
-        tokenBudget: current.tokenBudget,
-        answerMaxTokens: current.answerMaxTokens,
-        r2PriorTurns: current.r2PriorTurns,
-        r3MaxTokens: current.r3MaxTokens,
-        modelId,
-        revision,
-      }, setJob),
+      buildRewardDatasets(
+        {
+          preparedId: current.preparedId.trim(),
+          rewards: current.rewards,
+          maxInputsPerReward: current.maxInputsPerReward,
+          keepAllOneTies: current.rewards.includes('r0') && current.keepAllOneTies,
+          seed: current.seed,
+          candidates: current.candidates,
+          temperature: current.temperature,
+          rewriteMaxTokens: current.rewriteMaxTokens,
+          topK: current.topK,
+          tokenBudget: current.tokenBudget,
+          answerMaxTokens: current.answerMaxTokens,
+          r2PriorTurns: current.r2PriorTurns,
+          r3MaxTokens: current.r3MaxTokens,
+          modelId,
+          revision,
+        },
+        setJob,
+      ),
     )
   }, [build, modelId, revision])
 
-  const canStop = build.state.status === 'running' && job?.status === 'running' && !stopRequested
+  const canStop =
+    build.state.status === 'running' && job?.status === 'running' && !stopRequested
   const stop = useCallback(async () => {
     if (!canStop || !job) return
     setStopRequested(true)

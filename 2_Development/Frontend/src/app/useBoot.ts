@@ -137,10 +137,12 @@ export function useBoot(): BootState {
           setHadLauncher(true)
         }
       }
-      const boot = launcherMisses.current < LAUNCHER_PROBES ? lastLauncher.current : null
+      const boot =
+        launcherMisses.current < LAUNCHER_PROBES ? lastLauncher.current : null
       // Compose publishes ready only after its health check. Until then the
       // API port may be closed or still point to a backend being replaced.
-      const launcherStarting = boot !== null && boot.phase !== 'ready' && boot.phase !== 'failed'
+      const launcherStarting =
+        boot !== null && boot.phase !== 'ready' && boot.phase !== 'failed'
       const next = launcherStarting ? null : await checkReady().catch(() => null)
       if (cancelled) return
       setLauncher(boot)

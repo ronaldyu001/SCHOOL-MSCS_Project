@@ -5,6 +5,7 @@ from os import getenv
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from application.ports.models.llm import MAX_MODEL_ID_LENGTH, MODEL_ID_PATTERN
 from application.use_cases.generation import AnswerQuestion, GenerateText, RewriteQuery
 from application.use_cases.generation.answer_question import AnswerFromContext
 from application.use_cases.generation.measure_tokens import MeasureTokens
@@ -17,8 +18,6 @@ from .resources import language_model, resolve_checkpoint
 router = APIRouter(prefix="/model", tags=["model"])
 logger = logging.getLogger(__name__)
 
-MODEL_ID_PATTERN = r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*/[a-zA-Z0-9_][a-zA-Z0-9_.-]*$"
-
 
 class CheckpointRequest(BaseModel):
     """Fields every route that needs the language model accepts."""
@@ -28,7 +27,7 @@ class CheckpointRequest(BaseModel):
 
     model_id: str | None = Field(
         default=None,
-        max_length=193,
+        max_length=MAX_MODEL_ID_LENGTH,
         pattern=MODEL_ID_PATTERN,
         description="Hugging Face Hub model ID in owner/model format. Omit to use the default.",
     )

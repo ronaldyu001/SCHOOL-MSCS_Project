@@ -1,5 +1,19 @@
-/* A panel where the page's controls would have been, so the shape of the page
-   is recognisable even when it cannot be used yet. */
+/* The page's own heading and lede, then a panel where its controls would have
+   been, so the shape of the page is recognisable even when it cannot be used
+   yet. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.lede {
+  max-inline-size: var(--measure);
+  color: var(--fg-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+
 .gate {
   display: flex;
   flex-direction: column;

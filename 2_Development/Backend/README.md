@@ -224,9 +224,13 @@ Use a new output directory for another run.
 
 ## Train a rewrite adapter
 
-Send `POST /training/runs` with a saved `dataset_id`. `model_id` and `revision`
-are optional Hugging Face checkpoint overrides. Omit them to use the configured
-base checkpoint. Optional `name`, `notes`, and `settings` fields customize the run:
+Send `POST /training/runs` with a saved `dataset_id`. By default the run uses the
+Hugging Face model and exact commit recorded when that dataset was built. Older
+datasets without a recorded Hub model and commit use the configured base
+checkpoint. `model_id` and `revision` are optional overrides. A revision alone
+applies to the default model for that dataset. When choosing a different model,
+either supply its revision or let the worker resolve that model's default revision.
+Optional `name`, `notes`, and `settings` fields customize the run:
 
 ```json
 {
@@ -242,6 +246,8 @@ Settings also accept `seed`, `learning_rate`, `batch_size`,
 run can be queued or running. Additional starts return `409 Conflict`. Run status
 is `queued`, `running`, `completed`, `failed`, or `interrupted`. The worker trains on
 complete prompt/rewrite pairs that fit the token limit and reports skipped row counts.
+The run records the revision selected at queue time in `requested_revision` and
+the exact commit loaded by the worker in `model_revision` on completion.
 CPU is the default. The existing Compose GPU override sets `LLM_DEVICE=gpu`.
 
 Both `/rewards/datasets` and `/training/runs` have the same management endpoints:

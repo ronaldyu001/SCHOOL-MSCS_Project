@@ -1,6 +1,10 @@
 from typing import Protocol
 
 
+MODEL_ID_PATTERN = r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*/[a-zA-Z0-9_][a-zA-Z0-9_.-]*$"
+MAX_MODEL_ID_LENGTH = 193
+
+
 class ContextWindowExceeded(ValueError):
     """The supplied input exceeds the model's available context."""
 

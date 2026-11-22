@@ -33,12 +33,17 @@ export function AppRoutes() {
         {ROUTES.map((route) => {
           const Page = route.status === 'built' ? PAGES[route.path] : undefined
           const content = Page ? <Page /> : <PlannedPage route={route} />
-          const needsArtifact = route.requires?.some((requirement) => requirement !== 'data')
           return (
             <Route
               key={route.path}
               path={route.path}
-              element={needsArtifact ? <WorkflowGate route={route}>{content}</WorkflowGate> : content}
+              element={
+                route.requires?.length ? (
+                  <WorkflowGate route={route}>{content}</WorkflowGate>
+                ) : (
+                  content
+                )
+              }
             />
           )
         })}

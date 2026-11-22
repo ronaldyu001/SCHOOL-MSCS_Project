@@ -47,7 +47,10 @@ export function RewardOutcomes({ result, definition, aside }: RewardOutcomesProp
           />
           <Stat label="Thrown out" value={count(result.attempted - result.kept)} />
           {result.kept_all_one_ties ? (
-            <Stat label="Kept from all-one ties" value={count(result.kept_all_one_ties)} />
+            <Stat
+              label="Kept from all-one ties"
+              value={count(result.kept_all_one_ties)}
+            />
           ) : null}
         </StatGrid>
 

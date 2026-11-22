@@ -1,5 +1,6 @@
 import { useOutletContext } from 'react-router'
 import type { Artifacts } from '@/features/artifacts/useArtifacts'
+import type { useFineTune } from '@/features/fine-tuning/useFineTune'
 import type { useModel } from '@/features/harness/useModel'
 import type { usePipeline } from '@/features/pipeline/usePipeline'
 import type { useRetrieval } from '@/features/retrieval/useRetrieval'
@@ -65,6 +66,9 @@ export type ShellContext = ShellData & {
   rewardBuild: ReturnType<typeof useRewardBuild>
   /** Reward definitions, fetched once for the session. */
   rewardCatalogue: ReturnType<typeof useRewardCatalogue>
+  /** The fine-tuning form, and the request that starts a run. */
+  fineTune: ReturnType<typeof useFineTune>
+  /** Saved datasets and training runs, polled while a run is active. */
   artifacts: Artifacts
 }
 

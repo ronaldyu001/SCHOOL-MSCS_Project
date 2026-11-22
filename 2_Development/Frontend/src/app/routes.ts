@@ -5,13 +5,18 @@ export type RouteStatus = 'built' | 'planned'
 /** What has to exist before a section can do anything. */
 export type Requirement = 'data' | 'training-data' | 'adapter'
 
-/**
- * The artifact a requirement stands for, mid-sentence, named without repeating
- * the tab that produces it — the two appear in the same breath.
- */
+/** What the requirement is called where it appears as a thing, not a tab. */
+export const REQUIREMENT_NOUN: Record<Requirement, string> = {
+  data: 'Indexed data',
+  'training-data': 'Training data',
+  adapter: 'Adapter',
+}
+
+/** One sentence telling the reader what to go and do about it. */
 export const REQUIREMENT_LABEL: Record<Requirement, string> = {
   data: 'Index the conversations in Setup to continue.',
-  'training-data': 'Build a reward dataset with at least one kept rewrite, or use one already saved.',
+  'training-data':
+    'Build a reward dataset with at least one kept rewrite, or use one already saved.',
   adapter: 'Finish a fine-tuning run to get an adapter to evaluate.',
 }
 
@@ -89,7 +94,7 @@ export const ROUTES: RouteDef[] = [
       'Label-free results expressed as a fraction of the supervised ceiling',
     ],
     proposalRef: 'Evaluation',
-    requires: ['adapter', 'data'],
+    requires: ['data', 'adapter'],
   },
   {
     path: '/search',

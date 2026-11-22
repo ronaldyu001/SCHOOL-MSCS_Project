@@ -59,6 +59,12 @@ class ModelCache:
             return self._loaded[1]
 
 
+def require_hub_model_id(model_id: str) -> None:
+    # Transformers also accepts local directories with the same shape as Hub IDs.
+    if Path(model_id).is_dir():
+        raise HTTPException(status_code=422, detail="Provide a Hugging Face Hub model ID.")
+
+
 def resolve_checkpoint(model_id: str | None, revision: str | None) -> tuple[str, str | None]:
     """Fill in the configured default, pinning its revision only for that model."""
     resolved_id = model_id or config.llm_model_id
@@ -66,9 +72,7 @@ def resolve_checkpoint(model_id: str | None, revision: str | None) -> tuple[str,
     if resolved_revision is None and resolved_id == config.llm_model_id:
         resolved_revision = config.llm_model_revision
 
-    # Transformers also accepts local directories with the same shape as Hub IDs.
-    if Path(resolved_id).is_dir():
-        raise HTTPException(status_code=422, detail="Provide a Hugging Face Hub model ID.")
+    require_hub_model_id(resolved_id)
     return resolved_id, resolved_revision
 
 

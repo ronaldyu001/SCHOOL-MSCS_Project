@@ -9,9 +9,10 @@ import styles from './PlannedPage.module.css'
  * proposal and nothing else — no placeholder charts and no sample numbers,
  * because a convincing-looking empty dashboard is worse than an honest one.
  *
- * It also says, in one line, what it is going to need and which tab produces
- * it. Without that, a tab with nothing on it reads as something that broke or
- * that is still loading, which is the one thing it is not.
+ * It says plainly that it is not loading, because a tab with nothing on it
+ * reads as something that broke or is still fetching, which is the one thing
+ * it is not. What it still needs is the gate's job: a planned route with
+ * unmet requirements never reaches this page.
  */
 export function PlannedPage({ route }: { route: RouteDef }) {
   useEffect(() => {
@@ -25,7 +26,7 @@ export function PlannedPage({ route }: { route: RouteDef }) {
         <p className={styles.lede}>{route.summary}</p>
         <p className={styles.state}>
           <Icon name="dot" size={11} strokeWidth={3} />
-          Evaluation is planned.
+          {route.title} is planned — nothing here is loading.
         </p>
       </div>
 
@@ -49,7 +50,8 @@ export function PlannedPage({ route }: { route: RouteDef }) {
       </Panel>
 
       <p className={styles.ref}>
-        Proposal reference: {route.proposalRef} · <Link to="/artifacts">View saved adapters</Link>
+        Proposal reference: {route.proposalRef} ·{' '}
+        <Link to="/artifacts">View saved adapters</Link>
       </p>
     </div>
   )

@@ -10,7 +10,6 @@ import {
   Stat,
   StatGrid,
 } from '@/components/ui'
-import { DataGate } from '@/app/DataGate'
 import { useShell } from '@/app/shell-context'
 import { BuildControls } from '@/features/rewards/BuildControls'
 import { RewardCatalogue } from '@/features/rewards/RewardCatalogue'
@@ -24,13 +23,7 @@ import styles from './TrainingPage.module.css'
 export function TrainingPage() {
   // The shell holds the build, so leaving the tab mid-run no longer throws the
   // result away when it lands.
-  const {
-    health,
-    data,
-    model,
-    rewardBuild: build,
-    rewardCatalogue: catalogue,
-  } = useShell()
+  const { health, model, rewardBuild: build, rewardCatalogue: catalogue } = useShell()
 
   useEffect(() => {
     document.title = 'Training data · Memory Query Rewriter'
@@ -62,7 +55,9 @@ export function TrainingPage() {
           Write several versions of each question, score them, and keep the one that
           worked best. That gives you a file of good rewrites to train on.
         </p>
-        <p className={styles.caveat}><Link to="/artifacts">View saved datasets</Link></p>
+        <p className={styles.caveat}>
+          <Link to="/artifacts">View saved datasets</Link>
+        </p>
       </div>
 
       {health.state === 'offline' ? (
@@ -73,155 +68,148 @@ export function TrainingPage() {
         </Callout>
       ) : null}
 
-      {/* Everything that needs the index sits inside the gate; the heading and
-          the caveat above it do not move, so opening this tab early reads as
-          "not yet" rather than as a different page. */}
-      <DataGate
-        data={data}
-        page="Training data"
-        emptyHeading="Nothing to train on yet"
-        emptyExplain="Training data is built out of the indexed conversations, so the data has to go in first. You only do that once."
-      >
-        <ModelPanel model={model} busy={build.busy} />
+      <ModelPanel model={model} busy={build.busy} />
 
-        <RewardCatalogue catalogue={catalogue} />
+      <RewardCatalogue catalogue={catalogue} />
 
-        <Panel>
-          <PanelHeader
-            title="Build it"
-            description="Tick the scorers you want. Each one produces its own file of rewrites."
-          />
-          <BuildControls
-            build={build}
-            actionLabel="Build"
-            disabled={health.state === 'offline'}
-          />
-        </Panel>
+      <Panel>
+        <PanelHeader
+          title="Build it"
+          description="Tick the scorers you want. Each one produces its own file of rewrites."
+        />
+        <BuildControls
+          build={build}
+          actionLabel="Build"
+          disabled={health.state === 'offline'}
+        />
+      </Panel>
 
-        {state.status === 'running' ? (
-          <Callout tone="info" icon="refresh">
-            {build.saving
-              ? 'Saving reward datasets.'
-              : build.stopping
-                ? 'Stopping after the current operation.'
-                : 'Building the reward datasets.'}{' '}
-            {Object.entries(build.progress)
-              .map(([reward, attempted]) => `${reward.toUpperCase()} ${count(attempted)} attempted`)
-              .join(' · ')}
-          </Callout>
-        ) : null}
+      {state.status === 'running' ? (
+        <Callout tone="info" icon="refresh">
+          {build.saving
+            ? 'Saving reward datasets.'
+            : build.stopping
+              ? 'Stopping after the current operation.'
+              : 'Building the reward datasets.'}{' '}
+          {Object.entries(build.progress)
+            .map(
+              ([reward, attempted]) =>
+                `${reward.toUpperCase()} ${count(attempted)} attempted`,
+            )
+            .join(' · ')}
+        </Callout>
+      ) : null}
 
-        {state.status === 'running' && build.stopError ? (
-          <Callout tone="error" title="Couldn’t stop the build">{build.stopError}</Callout>
-        ) : null}
+      {state.status === 'running' && build.stopError ? (
+        <Callout tone="error" title="Couldn’t stop the build">
+          {build.stopError}
+        </Callout>
+      ) : null}
 
-        {state.status === 'done' && result === null ? (
-          <Callout tone="info">Build stopped. No dataset was saved.</Callout>
-        ) : null}
+      {state.status === 'done' && result === null ? (
+        <Callout tone="info">Build stopped. No dataset was saved.</Callout>
+      ) : null}
 
-        {state.status === 'failed' ? (
-          <Callout tone="error" title="Couldn't build it" role="alert">
-            <p>{state.error}</p>
-            {state.error.toLowerCase().includes('index this prepared dataset') ? (
-              <p className={styles.hint}>
-                <Link to="/setup">Open Setup</Link> to index the training split.
-              </p>
-            ) : null}
-          </Callout>
-        ) : null}
+      {state.status === 'failed' ? (
+        <Callout tone="error" title="Couldn't build it" role="alert">
+          <p>{state.error}</p>
+          {state.error.toLowerCase().includes('index this prepared dataset') ? (
+            <p className={styles.hint}>
+              <Link to="/setup">Open Setup</Link> to index the training split.
+            </p>
+          ) : null}
+        </Callout>
+      ) : null}
 
-        {result && totals ? (
-          <>
-            <Panel>
-              <PanelHeader
-                titleAs="h3"
-                title="Results"
-                aside={
-                  <Button
-                    size="sm"
-                    icon="copy"
-                    onClick={() => downloadManifest(result)}
-                  >
-                    Settings file
-                  </Button>
-                }
-              />
-              <PanelBody>
-                {nextDataset ? (
-                  <Link to={`/fine-tuning?dataset=${encodeURIComponent(nextDataset.dataset_id)}`}>
-                    Continue to Fine-tuning
-                  </Link>
-                ) : null}
-                <StatGrid>
-                  <Stat
-                    label="Rewrites kept"
-                    value={count(totals.kept)}
-                    hint={`Out of ${count(totals.attempted)} questions tried.`}
-                    accent
-                  />
-                  <Stat
-                    label="Scorers run"
-                    value={result.results
-                      .map((reward) => reward.reward.toUpperCase())
-                      .join(' · ')}
-                    text
-                  />
-                </StatGrid>
-
-                <DataTable
-                  caption="What each scorer kept"
-                  rowHeader="Scorer"
-                  columns={['Tried', 'Kept', 'Rate', 'File']}
-                  rows={result.results.map((reward) => ({
-                    key: reward.reward,
-                    header: (
-                      <span className={styles.rewardName}>
-                        <strong>{reward.reward.toUpperCase()}</strong>
-                        <span className={styles.rewardTitle}>
-                          {definitions.get(reward.reward)?.title ?? ''}
-                        </span>
-                      </span>
-                    ),
-                    highlight: reward.kept > 0,
-                    cells: [
-                      count(reward.attempted),
-                      count(reward.kept),
-                      percent(reward.kept, reward.attempted),
-                      <Button
-                        key="file"
-                        size="sm"
-                        variant="ghost"
-                        disabled={reward.examples.length === 0}
-                        onClick={() => downloadExamples(reward)}
-                      >
-                        Download
-                      </Button>,
-                    ],
-                  }))}
+      {result && totals ? (
+        <>
+          <Panel>
+            <PanelHeader
+              titleAs="h3"
+              title="Results"
+              aside={
+                <Button size="sm" icon="copy" onClick={() => downloadManifest(result)}>
+                  Settings file
+                </Button>
+              }
+            />
+            <PanelBody>
+              {nextDataset ? (
+                <Link
+                  to={`/fine-tuning?dataset=${encodeURIComponent(nextDataset.dataset_id)}`}
+                >
+                  Continue to Fine-tuning
+                </Link>
+              ) : null}
+              <StatGrid>
+                <Stat
+                  label="Rewrites kept"
+                  value={count(totals.kept)}
+                  hint={`Out of ${count(totals.attempted)} questions tried.`}
+                  accent
                 />
+                <Stat
+                  label="Scorers run"
+                  value={result.results
+                    .map((reward) => reward.reward.toUpperCase())
+                    .join(' · ')}
+                  text
+                />
+              </StatGrid>
 
-                {totals.kept === 0 ? (
-                  <Callout tone="warn" title="Nothing was kept">
-                    <p>
-                      Every question got thrown out before a winner could be picked. The
-                      panels below say why. Usually the rewrites came out too similar,
-                      so turning up Variety helps.
-                    </p>
-                  </Callout>
-                ) : null}
-              </PanelBody>
-            </Panel>
-
-            {result.results.map((reward) => (
-              <RewardOutcomes
-                key={reward.reward}
-                result={reward}
-                definition={definitions.get(reward.reward)}
+              <DataTable
+                caption="What each scorer kept"
+                rowHeader="Scorer"
+                columns={['Tried', 'Kept', 'Rate', 'File']}
+                rows={result.results.map((reward) => ({
+                  key: reward.reward,
+                  header: (
+                    <span className={styles.rewardName}>
+                      <strong>{reward.reward.toUpperCase()}</strong>
+                      <span className={styles.rewardTitle}>
+                        {definitions.get(reward.reward)?.title ?? ''}
+                      </span>
+                    </span>
+                  ),
+                  highlight: reward.kept > 0,
+                  cells: [
+                    count(reward.attempted),
+                    count(reward.kept),
+                    percent(reward.kept, reward.attempted),
+                    <Button
+                      key="file"
+                      size="sm"
+                      variant="ghost"
+                      disabled={reward.examples.length === 0}
+                      onClick={() => downloadExamples(reward)}
+                    >
+                      Download
+                    </Button>,
+                  ],
+                }))}
               />
-            ))}
-          </>
-        ) : null}
-      </DataGate>
+
+              {totals.kept === 0 ? (
+                <Callout tone="warn" title="Nothing was kept">
+                  <p>
+                    Every question got thrown out before a winner could be picked. The
+                    panels below say why. Usually the rewrites came out too similar, so
+                    turning up Variety helps.
+                  </p>
+                </Callout>
+              ) : null}
+            </PanelBody>
+          </Panel>
+
+          {result.results.map((reward) => (
+            <RewardOutcomes
+              key={reward.reward}
+              result={reward}
+              definition={definitions.get(reward.reward)}
+            />
+          ))}
+        </>
+      ) : null}
     </div>
   )
 }

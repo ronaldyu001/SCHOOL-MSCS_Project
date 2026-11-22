@@ -1,7 +1,7 @@
 export { AllocationBar } from './AllocationBar'
 export { BrandMark } from './BrandMark'
 export type { AllocationSegment, AllocationTone } from './AllocationBar'
-export { Button } from './Button'
+export { Button, ButtonLink } from './Button'
 export { Callout } from './Callout'
 export { CopyValue } from './CopyValue'
 export { ChipList, Disclosure } from './Disclosure'

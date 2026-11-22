@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { BrandMark, Icon, type IconName } from '@/components/ui'
 import { useArtifacts, type Artifacts } from '@/features/artifacts/useArtifacts'
+import { useFineTune } from '@/features/fine-tuning/useFineTune'
 import { useModel } from '@/features/harness/useModel'
 import { usePipeline } from '@/features/pipeline/usePipeline'
 import { useRetrieval } from '@/features/retrieval/useRetrieval'
@@ -13,7 +14,13 @@ import { useTheme } from '@/lib/useTheme'
 import { DataBanner } from './DataBanner'
 import { readDataReadiness, type DataReadiness } from './data-readiness'
 import { HealthIndicator } from './HealthIndicator'
-import { PRIMARY_ROUTES, REQUIREMENT_SOURCE, SETUP_ROUTE, TOOL_ROUTES, type RouteDef } from './routes'
+import {
+  PRIMARY_ROUTES,
+  REQUIREMENT_SOURCE,
+  SETUP_ROUTE,
+  TOOL_ROUTES,
+  type RouteDef,
+} from './routes'
 import type { ShellContext } from './shell-context'
 import { useWorkspace } from './useWorkspace'
 import { nextRequirement } from './workflow'
@@ -30,14 +37,21 @@ import styles from './AppShell.module.css'
  */
 type NavMark = { icon: IconName; word: string; busy?: boolean; planned?: boolean }
 
-function markFor(route: RouteDef, data: DataReadiness, artifacts: Artifacts): NavMark | null {
+function markFor(
+  route: RouteDef,
+  data: DataReadiness,
+  artifacts: Artifacts,
+): NavMark | null {
   const prerequisite = nextRequirement(route, data, artifacts)
   if (prerequisite) {
     if (prerequisite.state === 'checking') return null
     if (prerequisite.requirement === 'data' && data.state === 'building') {
       return { icon: 'spinner', word: 'waiting for setup', busy: true }
     }
-    return { icon: 'lock', word: `requires ${REQUIREMENT_SOURCE[prerequisite.requirement].label}` }
+    return {
+      icon: 'lock',
+      word: `requires ${REQUIREMENT_SOURCE[prerequisite.requirement].label}`,
+    }
   }
   if (route.path === SETUP_ROUTE.path && data.progress.running) {
     return { icon: 'spinner', word: 'setting up the data', busy: true }
@@ -74,6 +88,7 @@ export function AppShell() {
   const rewardBuild = useRewardBuild(source)
   const rewardCatalogue = useRewardCatalogue()
   const artifacts = useArtifacts(rewardBuild.result?.results[0]?.dataset_id, pathname)
+  const fineTune = useFineTune(artifacts.refresh)
 
   const nextTheme = theme === 'dark' ? 'light' : 'dark'
 
@@ -127,8 +142,14 @@ export function AppShell() {
 
           <div className={styles.tools}>
             {TOOL_ROUTES.map((route) => (
-              <NavLink key={route.path} to={route.path} title={route.summary}
-                className={({ isActive }) => `${styles.toolLink} ${isActive ? styles.navLinkActive : ''}`}>
+              <NavLink
+                key={route.path}
+                to={route.path}
+                title={route.summary}
+                className={({ isActive }) =>
+                  `${styles.toolLink} ${isActive ? styles.navLinkActive : ''}`
+                }
+              >
                 <Icon name={route.icon} size={14} />
                 {route.label}
               </NavLink>
@@ -166,6 +187,7 @@ export function AppShell() {
               retrieval,
               rewardBuild,
               rewardCatalogue,
+              fineTune,
               artifacts,
             } satisfies ShellContext
           }

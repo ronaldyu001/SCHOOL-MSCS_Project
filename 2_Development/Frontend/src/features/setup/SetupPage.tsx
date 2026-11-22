@@ -13,7 +13,11 @@ import { count, duration } from '@/lib/format'
 import { useElapsed } from '@/lib/useElapsed'
 import styles from './SetupPage.module.css'
 
-const PARTITION_LABELS = { train: 'Train', validation: 'Validation', test: 'Test (held out)' }
+const PARTITION_LABELS = {
+  train: 'Train',
+  validation: 'Validation',
+  test: 'Test (held out)',
+}
 
 function StepRow({
   label,
@@ -80,7 +84,8 @@ export function SetupPage() {
     : alreadyHadData && !pipeline.busy
       ? workspace.latest
       : null
-  const justPrepared = indexed && prepared?.prepared_id === indexed.prepared_id ? prepared : null
+  const justPrepared =
+    indexed && prepared?.prepared_id === indexed.prepared_id ? prepared : null
   const partitions = saved?.partitions ?? justPrepared?.partitions
   const localSplit = split && split.split_id === justPrepared?.split_id ? split : null
 
@@ -132,7 +137,11 @@ export function SetupPage() {
               <strong>{count(loaded?.conversation_count ?? 0)}</strong> conversations
               are ready to search.
             </p>
-            <Button variant="primary" icon="arrow" onClick={() => void navigate('/training')}>
+            <Button
+              variant="primary"
+              icon="arrow"
+              onClick={() => void navigate('/training')}
+            >
               Continue to Training data
             </Button>
           </div>
@@ -194,8 +203,11 @@ export function SetupPage() {
                   <div key={partition}>
                     <h3>{PARTITION_LABELS[partition]}</h3>
                     <ChipList
-                      items={saved?.partitions[partition].conversation_ids ??
-                        localSplit?.[`${partition}_conversation_ids`] ?? []}
+                      items={
+                        saved?.partitions[partition].conversation_ids ??
+                        localSplit?.[`${partition}_conversation_ids`] ??
+                        []
+                      }
                       label={`${PARTITION_LABELS[partition]} conversation IDs`}
                     />
                   </div>

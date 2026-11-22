@@ -1,0 +1,57 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-inline-size: 58rem;
+}
+
+.lede {
+  max-inline-size: var(--measure);
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Auto-fit rather than a fixed column count: the advanced settings are eight
+   short numeric fields, and a fixed grid leaves them stranded at tablet width. */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: var(--space-4);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.estimate {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+.phase {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.provenance {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  text-wrap: pretty;
+}

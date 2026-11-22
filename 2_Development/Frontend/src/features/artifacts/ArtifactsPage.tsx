@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
 import {
   Button,
+  ButtonLink,
   Callout,
   CopyValue,
   Disclosure,
@@ -120,12 +120,18 @@ function ArtifactEditor({
             Save changes
           </Button>
           {downloadable ? (
-            <a href={artifactDownloadUrl(kind, item.id)}>Download ZIP</a>
+            <ButtonLink size="sm" icon="copy" href={artifactDownloadUrl(kind, item.id)}>
+              Download ZIP
+            </ButtonLink>
           ) : null}
           {dataset && dataset.row_count > 0 ? (
-            <Link to={`/fine-tuning?dataset=${encodeURIComponent(dataset.id)}`}>
+            <ButtonLink
+              size="sm"
+              icon="arrow"
+              to={`/fine-tuning?dataset=${encodeURIComponent(dataset.id)}`}
+            >
               Use for fine-tuning
-            </Link>
+            </ButtonLink>
           ) : null}
           <Button
             size="sm"
@@ -169,7 +175,11 @@ export function ArtifactsPage() {
       <Panel>
         <PanelHeader
           title="Reward datasets"
-          aside={<Link to="/training">Build dataset</Link>}
+          aside={
+            <ButtonLink size="sm" variant="ghost" to="/training" icon="refresh">
+              Build dataset
+            </ButtonLink>
+          }
         />
         <PanelBody>
           {artifacts.datasets.length ? (
@@ -193,7 +203,11 @@ export function ArtifactsPage() {
       <Panel>
         <PanelHeader
           title="Training runs and adapters"
-          aside={<Link to="/fine-tuning">Fine-tune</Link>}
+          aside={
+            <ButtonLink size="sm" variant="ghost" to="/fine-tuning" icon="split">
+              Fine-tune
+            </ButtonLink>
+          }
         />
         <PanelBody>
           {artifacts.runs.length ? (

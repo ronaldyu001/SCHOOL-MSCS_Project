@@ -595,7 +595,9 @@ export type RewardBuildUpdate = Pick<RewardBuildStatus, 'id' | 'status' | 'attem
 
 export function cancelRewardBuild(id: string) {
   return request<RewardBuildStatus>(
-    `/rewards/builds/${encodeURIComponent(id)}/cancel`, { method: 'POST' }, { timeoutMs: 10_000 },
+    `/rewards/builds/${encodeURIComponent(id)}/cancel`,
+    { method: 'POST' },
+    { timeoutMs: 10_000 },
   )
 }
 
@@ -603,29 +605,35 @@ export async function buildRewardDatasets(
   input: RewardBuildInput,
   onProgress: (progress: RewardBuildUpdate) => void,
 ) {
-  let job = await postJson<RewardBuildStatus>('/rewards/builds', {
-    ...checkpoint(input),
-    prepared_id: input.preparedId,
-    rewards: input.rewards,
-    max_inputs_per_reward: input.maxInputsPerReward,
-    keep_all_one_ties: input.keepAllOneTies,
-    seed: input.seed,
-    candidates: input.candidates,
-    temperature: input.temperature,
-    rewrite_max_tokens: input.rewriteMaxTokens,
-    top_k: input.topK,
-    token_budget: input.tokenBudget,
-    answer_max_tokens: input.answerMaxTokens,
-    r2_prior_turns: input.r2PriorTurns,
-    r3_max_tokens: input.r3MaxTokens,
-  }, { timeoutMs: 10_000 })
+  let job = await postJson<RewardBuildStatus>(
+    '/rewards/builds',
+    {
+      ...checkpoint(input),
+      prepared_id: input.preparedId,
+      rewards: input.rewards,
+      max_inputs_per_reward: input.maxInputsPerReward,
+      keep_all_one_ties: input.keepAllOneTies,
+      seed: input.seed,
+      candidates: input.candidates,
+      temperature: input.temperature,
+      rewrite_max_tokens: input.rewriteMaxTokens,
+      top_k: input.topK,
+      token_budget: input.tokenBudget,
+      answer_max_tokens: input.answerMaxTokens,
+      r2_prior_turns: input.r2PriorTurns,
+      r3_max_tokens: input.r3MaxTokens,
+    },
+    { timeoutMs: 10_000 },
+  )
   while (true) {
     const { id, status, attempted } = job
     onProgress({ id, status, attempted })
     if (status === 'completed' || status === 'cancelled') return job.result
     await new Promise((resolve) => setTimeout(resolve, 2000))
     job = await request<RewardBuildStatus>(
-      `/rewards/builds/${job.id}`, { method: 'GET' }, { timeoutMs: 15_000 },
+      `/rewards/builds/${job.id}`,
+      { method: 'GET' },
+      { timeoutMs: 15_000 },
     )
   }
 }
@@ -674,32 +682,117 @@ function artifactPath(kind: ArtifactKind, id: string) {
 }
 
 export function listSavedRewardDatasets() {
-  return request<SavedRewardDataset[]>(artifactPaths.datasets, { method: 'GET' }, { timeoutMs: 10_000 })
+  return request<SavedRewardDataset[]>(
+    artifactPaths.datasets,
+    { method: 'GET' },
+    { timeoutMs: 10_000 },
+  )
 }
 
 export function listTrainingRuns() {
-  return request<TrainingRun[]>(artifactPaths.runs, { method: 'GET' }, { timeoutMs: 10_000 })
+  return request<TrainingRun[]>(
+    artifactPaths.runs,
+    { method: 'GET' },
+    { timeoutMs: 10_000 },
+  )
 }
 
-export function startTrainingRun(input: Checkpoint & { datasetId: string; epochs: number; name?: string }) {
-  return postJson<TrainingRun>(artifactPaths.runs, {
-    ...checkpoint(input),
-    dataset_id: input.datasetId,
-    settings: { epochs: input.epochs },
-    name: input.name || undefined,
-  }, { timeoutMs: 10_000 })
+/**
+ * Every knob `TrainingSettingsRequest` accepts, with the bounds its dataclass
+ * enforces. Mirrored here so the form can state them and reject a value before
+ * a round trip rather than after — keep them in step with
+ * application/use_cases/training/training_run.py.
+ *
+ * All but the learning rate must be whole numbers: the backend checks the type
+ * as well as the range, so 2.5 epochs is a 422 rather than a rounding.
+ */
+export type TrainingSettings = {
+  seed: number
+  epochs: number
+  learningRate: number
+  batchSize: number
+  gradientAccumulationSteps: number
+  maxLength: number
+  loraRank: number
+  loraAlpha: number
 }
 
-export function updateArtifact(kind: ArtifactKind, id: string, metadata: ArtifactMetadata) {
-  return request<SavedRewardDataset | TrainingRun>(artifactPath(kind, id), {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(metadata),
-  }, { timeoutMs: 10_000 })
+export const TRAINING_DEFAULTS: TrainingSettings = {
+  seed: 123,
+  epochs: 1,
+  learningRate: 0.0002,
+  batchSize: 1,
+  gradientAccumulationSteps: 4,
+  maxLength: 512,
+  loraRank: 8,
+  loraAlpha: 16,
+}
+
+export const TRAINING_LIMITS: Record<keyof TrainingSettings, [number, number]> = {
+  seed: [0, 2 ** 32 - 1],
+  epochs: [1, 20],
+  // Exclusive at the bottom; the form uses a step small enough to express it.
+  learningRate: [0, 1],
+  batchSize: [1, 32],
+  gradientAccumulationSteps: [1, 128],
+  maxLength: [32, 32768],
+  loraRank: [1, 256],
+  loraAlpha: [1, 512],
+}
+
+export function startTrainingRun(
+  input: Checkpoint & {
+    datasetId: string
+    settings: TrainingSettings
+    name?: string
+    notes?: string
+  },
+) {
+  const { settings } = input
+  return postJson<TrainingRun>(
+    artifactPaths.runs,
+    {
+      ...checkpoint(input),
+      dataset_id: input.datasetId,
+      settings: {
+        seed: settings.seed,
+        epochs: settings.epochs,
+        learning_rate: settings.learningRate,
+        batch_size: settings.batchSize,
+        gradient_accumulation_steps: settings.gradientAccumulationSteps,
+        max_length: settings.maxLength,
+        lora_rank: settings.loraRank,
+        lora_alpha: settings.loraAlpha,
+      },
+      name: input.name || undefined,
+      notes: input.notes || undefined,
+    },
+    { timeoutMs: 10_000 },
+  )
+}
+
+export function updateArtifact(
+  kind: ArtifactKind,
+  id: string,
+  metadata: ArtifactMetadata,
+) {
+  return request<SavedRewardDataset | TrainingRun>(
+    artifactPath(kind, id),
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(metadata),
+    },
+    { timeoutMs: 10_000 },
+  )
 }
 
 export function deleteArtifact(kind: ArtifactKind, id: string) {
-  return request<void>(artifactPath(kind, id), { method: 'DELETE' }, { timeoutMs: 10_000 })
+  return request<void>(
+    artifactPath(kind, id),
+    { method: 'DELETE' },
+    { timeoutMs: 10_000 },
+  )
 }
 
 export function artifactDownloadUrl(kind: ArtifactKind, id: string) {

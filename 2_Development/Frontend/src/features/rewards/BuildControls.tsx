@@ -85,7 +85,10 @@ export function BuildControls({
               value={limit ?? ''}
               disabled={busy}
               onChange={(event) =>
-                update('maxInputsPerReward', event.target.value === '' ? null : Number(event.target.value))
+                update(
+                  'maxInputsPerReward',
+                  event.target.value === '' ? null : Number(event.target.value),
+                )
               }
             />
 
@@ -113,7 +116,12 @@ export function BuildControls({
           {settings.rewards.includes('r0') ? (
             <CheckGroup
               legend="R0 ties"
-              options={[{ value: 'keep', label: 'Keep one rewrite when every candidate scores 1' }]}
+              options={[
+                {
+                  value: 'keep',
+                  label: 'Keep one rewrite when every candidate scores 1',
+                },
+              ]}
               selected={settings.keepAllOneTies ? ['keep'] : []}
               disabled={busy}
               onToggle={() => update('keepAllOneTies', !settings.keepAllOneTies)}
@@ -214,12 +222,18 @@ export function BuildControls({
             {actionLabel}
           </Button>
           {busy ? (
-            <Button variant="secondary" disabled={!build.canStop} onClick={() => void build.stop()}>
+            <Button
+              variant="secondary"
+              disabled={!build.canStop}
+              onClick={() => void build.stop()}
+            >
               Stop build
             </Button>
           ) : null}
           {estimate.total !== null ? (
-            <p className={styles.estimate}>Roughly {count(estimate.total)} calls to the model.</p>
+            <p className={styles.estimate}>
+              Roughly {count(estimate.total)} calls to the model.
+            </p>
           ) : null}
         </div>
       </PanelBody>
