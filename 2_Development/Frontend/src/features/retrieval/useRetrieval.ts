@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   answerQuestion,
-  listPrepared,
   listQuestions,
   rewriteQuery,
   searchMemories,
   type AnswerResponse,
   type DatasetQuestion,
   type Partition,
-  type PreparedHandle,
   type RewriteResponse,
   type SearchResponse,
 } from '@/lib/api'
 import { useAsyncRun, resultOf } from '@/lib/useAsyncRun'
-import { useShell } from '@/app/shell-context'
+import type { ShellData } from '@/app/shell-context'
 
 /** Budgets offered as a sweep. Powers of two, as the evaluation ladder uses. */
 export const BUDGET_CHOICES = [128, 256, 512, 1024, 2048] as const
@@ -38,8 +36,6 @@ export type RetrievalSettings = {
   rewriteMaxTokens: number
   seed: number
   answerMaxTokens: number
-  modelId: string
-  revision: string
 }
 
 const DEFAULTS: RetrievalSettings = {
@@ -53,8 +49,6 @@ const DEFAULTS: RetrievalSettings = {
   rewriteMaxTokens: 48,
   seed: 123,
   answerMaxTokens: 64,
-  modelId: '',
-  revision: '',
 }
 
 export function parseTurnIds(value: string): string[] {
@@ -67,28 +61,13 @@ export function parseTurnIds(value: string): string[] {
 /**
  * Conversation ids this session can search.
  *
- * Preferred source is the pipeline's own split result, because those are the
- * conversations this browser just indexed. Prepared handles still held by the
- * backend are the fallback, so a page reload does not strand the user — and the
- * field stays typeable either way, since the Qdrant collection outlives both.
+ * Read from the shared workspace rather than fetched again here. The pipeline
+ * result is preferred when this browser just ran it, because that is the
+ * partition the user is thinking about.
  */
-function useKnownConversations() {
-  const { pipeline } = useShell()
-  const [handles, setHandles] = useState<PreparedHandle[]>([])
+function useKnownConversations({ pipeline, workspace }: ShellData) {
   const split = resultOf(pipeline.state.split)
   const indexed = resultOf(pipeline.state.index)
-
-  useEffect(() => {
-    let cancelled = false
-    void listPrepared()
-      .then((next) => {
-        if (!cancelled) setHandles(next)
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   return useMemo(() => {
     const partition: Partition = indexed?.partition ?? pipeline.settings.partition
@@ -99,30 +78,35 @@ function useKnownConversations() {
           test: split.test_conversation_ids,
         }[partition]
       : []
-    const preparedId = resultOf(pipeline.state.prepare)?.prepared_id ?? null
-    const handle =
-      handles.find((item) => item.prepared_id === preparedId) ?? handles.at(-1) ?? null
-    const ids =
-      fromSplit.length > 0
-        ? fromSplit
-        : (handle?.partitions[partition].conversation_ids ?? [])
+    const fromBackend = workspace.conversationsIn(partition)
+    const ids = fromSplit.length > 0 ? fromSplit : fromBackend
     return {
       partition,
       conversationIds: ids,
-      preparedId: preparedId ?? handle?.prepared_id ?? null,
+      preparedId: resultOf(pipeline.state.prepare)?.prepared_id ?? workspace.preparedId,
       source:
         fromSplit.length > 0
           ? ('pipeline' as const)
-          : handle
+          : ids.length > 0
             ? ('backend' as const)
             : ('none' as const),
     }
-  }, [handles, indexed, pipeline.settings.partition, pipeline.state.prepare, split])
+  }, [indexed, pipeline.settings.partition, pipeline.state.prepare, split, workspace])
 }
 
-export function useRetrieval() {
+/**
+ * Everything the search page works with: the form, the three runs it can
+ * start, and what came back.
+ *
+ * Owned by the shell rather than the page, so leaving the tab does not throw
+ * a search away. `reset` is the only thing that clears it.
+ */
+export function useRetrieval(source: ShellData) {
   const [settings, setSettings] = useState<RetrievalSettings>(DEFAULTS)
-  const known = useKnownConversations()
+  const known = useKnownConversations(source)
+  // Which checkpoint answers. Shared with the training page, so the rewrites
+  // you look at here and the ones a build keeps come from the same weights.
+  const { modelId, revision } = source.model
   const rewrite = useAsyncRun<RewriteResponse>()
   const search = useAsyncRun<SearchResponse>()
   const answer = useAsyncRun<AnswerResponse>()
@@ -210,12 +194,12 @@ export function useRetrieval() {
           topK: current.topK,
           tokenBudgets: [...current.budgets].sort((a, b) => a - b),
           expectedTurnIds: parseTurnIds(current.expectedTurnIds),
-          modelId: current.modelId,
-          revision: current.revision,
+          modelId,
+          revision,
         }),
       )
     },
-    [answer, search],
+    [answer, modelId, revision, search],
   )
 
   /** Ladder step 0: the message as written. */
@@ -236,8 +220,8 @@ export function useRetrieval() {
         count: current.candidates,
         temperature: current.temperature,
         maxNewTokens: current.rewriteMaxTokens,
-        modelId: current.modelId,
-        revision: current.revision,
+        modelId,
+        revision,
       }),
     )
     if (!candidates) return null
@@ -245,7 +229,7 @@ export function useRetrieval() {
     // The raw message leads, so every table reads as "as written, then rewrites".
     const queries = [raw, ...candidates.queries.filter((query) => query !== raw)]
     return runSearch(queries.slice(0, MAX_QUERIES))
-  }, [rewrite, runSearch])
+  }, [modelId, revision, rewrite, runSearch])
 
   const runAnswer = useCallback(
     (context: string) => {
@@ -255,12 +239,12 @@ export function useRetrieval() {
           question: current.text.trim(),
           context,
           maxNewTokens: current.answerMaxTokens,
-          modelId: current.modelId,
-          revision: current.revision,
+          modelId,
+          revision,
         }),
       )
     },
-    [answer],
+    [answer, modelId, revision],
   )
 
   const reset = useCallback(() => {

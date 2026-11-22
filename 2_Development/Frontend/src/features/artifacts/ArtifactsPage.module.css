@@ -1,0 +1,42 @@
+.page,
+.list,
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.page {
+  max-inline-size: 58rem;
+  gap: var(--space-6);
+}
+
+.lede,
+.facts {
+  color: var(--fg-muted);
+}
+
+.lede {
+  margin-block: var(--space-2) 0;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-4);
+}

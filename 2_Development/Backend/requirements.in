@@ -7,3 +7,7 @@ python-dotenv
 sentence-transformers
 torch
 transformers
+huggingface-hub
+datasets
+peft
+trl

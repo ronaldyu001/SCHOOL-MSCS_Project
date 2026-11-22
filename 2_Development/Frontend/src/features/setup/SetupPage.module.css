@@ -1,0 +1,128 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-inline-size: 48rem;
+}
+
+.lede {
+  margin: var(--space-2) 0 0;
+  color: var(--fg-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+
+.runner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  background-color: var(--raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 1.5rem 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  color: var(--fg-faint);
+}
+
+.step.running,
+.step.done {
+  color: var(--fg);
+}
+
+.step.failed {
+  color: var(--failed);
+}
+
+.bullet {
+  display: grid;
+  place-items: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--fg-faint);
+}
+
+.done .bullet {
+  color: var(--done);
+  border-color: var(--done-line);
+  background-color: var(--done-soft);
+}
+
+.running .bullet {
+  color: var(--running);
+  border-color: var(--running-line);
+}
+
+.failed .bullet {
+  color: var(--failed);
+  border-color: var(--failed-line);
+}
+
+.stepLabel {
+  font-size: var(--text-base);
+}
+
+.stepTime {
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions,
+.done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.doneText {
+  flex: 1 1 16rem;
+  margin: 0;
+  line-height: var(--leading-normal);
+}
+
+.note {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+.phases {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.spin {
+  animation: setup-spin 900ms linear infinite;
+}
+
+@keyframes setup-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}

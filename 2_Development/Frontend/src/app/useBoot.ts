@@ -43,6 +43,8 @@ export type BootState = {
   staleBackend: boolean
   /** The launcher feed, or null when nothing is publishing one. */
   launcher: BootStatus | null
+  /** True once a launcher feed has been seen, even if it later goes quiet. */
+  hadLauncher: boolean
   readiness: ReadinessResponse | null
   elapsedMs: number
   retry: () => void
@@ -72,6 +74,25 @@ function apiSteps(readiness: ReadinessResponse | null, reached: boolean): BootSt
 }
 
 /**
+ * Fold the latest poll into the steps already on screen.
+ *
+ * Steps are only ever added or updated, never dropped. The two feeds come and
+ * go independently — a readiness poll can fail while the backend restarts, and
+ * the launcher's little server can miss a request — and rebuilding the list
+ * from whatever answered this second made whole boxes vanish mid-boot. A step
+ * that stops reporting keeps its last known state instead.
+ */
+function mergeSteps(seen: BootStep[], incoming: BootStep[]): BootStep[] {
+  const next = [...seen]
+  for (const step of incoming) {
+    const at = next.findIndex((item) => item.id === step.id)
+    if (at === -1) next.push(step)
+    else next[at] = step
+  }
+  return next
+}
+
+/**
  * Gate state for the whole app.
  *
  * Two independent sources, because neither alone is enough. The launcher knows
@@ -83,13 +104,17 @@ function apiSteps(readiness: ReadinessResponse | null, reached: boolean): BootSt
 export function useBoot(): BootState {
   const [launcher, setLauncher] = useState<BootStatus | null>(null)
   const [readiness, setReadiness] = useState<ReadinessResponse | null>(null)
-  const [reached, setReached] = useState(false)
+  const [steps, setSteps] = useState<BootStep[]>([])
   const [ready, setReady] = useState(false)
   const [nonce, setNonce] = useState(0)
   const [elapsedMs, setElapsedMs] = useState(0)
   // Read the clock inside the effect, never during render.
   const startedAt = useRef<number | null>(null)
   const launcherMisses = useRef(0)
+  const lastLauncher = useRef<BootStatus | null>(null)
+  const reached = useRef(false)
+  // State, not a ref: the screen reads this while deciding what to say.
+  const [hadLauncher, setHadLauncher] = useState(false)
 
   useEffect(() => {
     if (ready) return
@@ -99,19 +124,32 @@ export function useBoot(): BootState {
 
     const tick = async () => {
       const lookForLauncher = launcherMisses.current < LAUNCHER_PROBES
-      const [boot, next] = await Promise.all([
-        lookForLauncher ? getBootStatus() : Promise.resolve(null),
-        checkReady().then(
-          (value) => value,
-          () => null,
-        ),
-      ])
+      const status = lookForLauncher ? await getBootStatus() : null
       if (cancelled) return
-      if (lookForLauncher && boot === null) launcherMisses.current += 1
+      if (lookForLauncher) {
+        // Reset on success. Counting misses cumulatively meant three scattered
+        // hiccups over a long build retired the feed for good, taking the
+        // container steps off the screen with it.
+        if (status === null) launcherMisses.current += 1
+        else {
+          launcherMisses.current = 0
+          lastLauncher.current = status
+          setHadLauncher(true)
+        }
+      }
+      const boot = launcherMisses.current < LAUNCHER_PROBES ? lastLauncher.current : null
+      // Compose publishes ready only after its health check. Until then the
+      // API port may be closed or still point to a backend being replaced.
+      const launcherStarting = boot !== null && boot.phase !== 'ready' && boot.phase !== 'failed'
+      const next = launcherStarting ? null : await checkReady().catch(() => null)
+      if (cancelled) return
       setLauncher(boot)
       setReadiness(next)
       setElapsedMs(Date.now() - (startedAt.current ?? Date.now()))
-      if (next) setReached(true)
+      if (next) reached.current = true
+      setSteps((seen) =>
+        mergeSteps(seen, [...(boot?.steps ?? []), ...apiSteps(next, reached.current)]),
+      )
       // Both have to agree. A warm backend left over from a previous session
       // answers /ready straight away, but the launcher is on its way to
       // recreating that very container with a freshly built image — handing
@@ -135,6 +173,7 @@ export function useBoot(): BootState {
     // An explicit retry looks for the launcher again: the user may have
     // started the desktop session since.
     launcherMisses.current = 0
+    lastLauncher.current = null
     startedAt.current = null
     setElapsedMs(0)
     setNonce((value) => value + 1)
@@ -142,7 +181,6 @@ export function useBoot(): BootState {
 
   const override = useCallback(() => setReady(true), [])
 
-  const steps = [...(launcher?.steps ?? []), ...apiSteps(readiness, reached)]
   const error =
     launcher?.phase === 'failed' ? (launcher.error ?? 'Startup failed.') : null
 
@@ -158,6 +196,7 @@ export function useBoot(): BootState {
     staleBackend,
     canOverride: error !== null || elapsedMs >= OFFER_OVERRIDE_AFTER_MS,
     launcher,
+    hadLauncher,
     readiness,
     elapsedMs,
     retry,

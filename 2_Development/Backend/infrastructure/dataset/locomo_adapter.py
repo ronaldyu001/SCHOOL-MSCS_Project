@@ -1,6 +1,7 @@
 import json
 import re
 from datetime import datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 
@@ -21,6 +22,7 @@ class LoCoMoAdapter:
         self.path = Path(path)
         self._conversations: Optional[Tuple[Conversation, ...]] = None
         self._qa: Optional[Tuple[QA, ...]] = None
+        self.corpus_sha256: str | None = None
 
     def load_conversations(self) -> Tuple[Conversation, ...]:
         self._load()
@@ -36,8 +38,8 @@ class LoCoMoAdapter:
         if self._conversations is not None:
             return
 
-        with self.path.open(encoding="utf-8") as source:
-            samples = json.load(source)
+        source = self.path.read_bytes()
+        samples = json.loads(source.decode("utf-8"))
         if not isinstance(samples, list):
             raise ValueError("LoCoMo dataset must contain a JSON list of samples.")
 
@@ -97,3 +99,4 @@ class LoCoMoAdapter:
 
         self._conversations = tuple(conversations)
         self._qa = tuple(questions)
+        self.corpus_sha256 = sha256(source).hexdigest()

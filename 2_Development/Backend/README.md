@@ -182,8 +182,19 @@ This route builds pilot datasets from the training partition. It runs synchronou
 returns 409 if indexing or another reward build is in progress. The request caps
 `max_inputs_per_reward` at 50 and `candidates` at 16. Index the training conversation
 data through `POST /data/{dataset_id}/index` first. R0 and R1 require training questions.
-The command-line builder handles full data runs and writes the manifest. Fine-tuning
-has no HTTP endpoint yet.
+The command-line builder handles full data runs and writes the manifest.
+
+For long builds, the frontend uses `POST /rewards/builds` with the same request
+fields. Set `max_inputs_per_reward` to null to use the entire training partition,
+or pass a positive count. Poll `GET /rewards/builds/{id}` for the number of
+attempted inputs per reward and the completed result. The backend keeps the latest
+job in memory and saves completed reward datasets in `/artifacts/datasets`.
+Set `keep_all_one_ties` to true (CLI `--keep-all-one-ties`) to keep one R0 rewrite
+when every candidate has evidence recall 1.0. Other all-tied inputs are skipped.
+New diagnostics record the shared score and identify rewrites kept by this option.
+Send `POST /rewards/builds/{id}/cancel` to stop a running build. Poll until it is
+`cancelled`. The active operation finishes before the job stops. If publication
+has already started, the job finishes saving the completed datasets.
 
 ## Build reward datasets
 
@@ -202,11 +213,51 @@ split, and embedding configuration. Use `--rewards r0 r1` to select a subset, an
 `--model-id` and a pinned `--model-revision`. Each build uses one frozen checkpoint
 for rewriting and reader tasks.
 
-Results appear in `2_Development/.artifacts/pilot`. Each reward has a JSONL file of
+Every build publishes one saved dataset per reward under `/artifacts/datasets`.
+Use the IDs printed by the CLI or returned as `results[].dataset_id` by the API.
+The optional `--output` flag also writes an export. In the example, that export
+appears in `2_Development/.artifacts/pilot`. Each reward has a JSONL file of
 `prompt` and `completion` pairs and a diagnostics file with one outcome per attempted
 input. The manifest records the split, settings, revisions, and counts. A pilot can
 produce an empty file if no input has two distinct rewrites with different scores.
 Use a new output directory for another run.
+
+## Train a rewrite adapter
+
+Send `POST /training/runs` with a saved `dataset_id`. `model_id` and `revision`
+are optional Hugging Face checkpoint overrides. Omit them to use the configured
+base checkpoint. Optional `name`, `notes`, and `settings` fields customize the run:
+
+```json
+{
+  "dataset_id": "<saved dataset UUID>",
+  "name": "R0 CPU pilot",
+  "settings": {"epochs": 1, "max_length": 512}
+}
+```
+
+Settings also accept `seed`, `learning_rate`, `batch_size`,
+`gradient_accumulation_steps`, `lora_rank`, and `lora_alpha`. The response is
+`202 Accepted` with a run record and a `Location` header for polling. One training
+run can be queued or running. Additional starts return `409 Conflict`. Run status
+is `queued`, `running`, `completed`, `failed`, or `interrupted`. The worker trains on
+complete prompt/rewrite pairs that fit the token limit and reports skipped row counts.
+CPU is the default. The existing Compose GPU override sets `LLM_DEVICE=gpu`.
+
+Both `/rewards/datasets` and `/training/runs` have the same management endpoints:
+
+| Method and suffix | Behavior |
+| --- | --- |
+| `GET` on the collection | List saved manifests, newest first |
+| `GET /{id}` | Inspect the artifact or poll a run for progress and metrics |
+| `PATCH /{id}` | Update `name` or `notes` |
+| `GET /{id}/download` | Download a ZIP with the manifest and dataset or completed adapter |
+| `DELETE /{id}` | Delete the artifact. A run or dataset in use returns `409 Conflict` |
+
+Rebuilding creates new dataset IDs. Raw training rows and completed adapter weights
+stay fixed. A completed run retains the source dataset ID and hash if that dataset
+is deleted. Compose stores these artifacts in `2_Development/.artifacts` on the host.
+Set `ARTIFACTS_DIR` when running the API or builder outside Docker.
 
 ## Application structure
 
@@ -214,7 +265,7 @@ Use a new output directory for another run.
 - `application/use_cases/generation`: text generation, query rewriting, and answering.
 - `application/use_cases/retrieval`: query search, context packing, and evidence scoring.
 - `application/use_cases/rewards`: input builders and scorers for R0–R3.
-- `application/use_cases/training`: selecting rewrites and assembling fine-tuning data.
+- `application/use_cases/training`: selecting rewrites, saving reward datasets, and fine-tuning.
 - `application/use_cases/evaluation`: evaluation use cases. Empty; no route yet.
 - `application/ports/models`: interfaces for embedding, generation, tokenization, and continuation scoring.
 - `infrastructure/models`: concrete model adapters implementing those interfaces.

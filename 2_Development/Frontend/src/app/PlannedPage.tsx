@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router'
-import { Panel, PanelBody, PanelHeader, StatusBadge } from '@/components/ui'
+import { Icon, Panel, PanelBody, PanelHeader, StatusBadge } from '@/components/ui'
 import type { RouteDef } from './routes'
 import styles from './PlannedPage.module.css'
 
@@ -8,6 +8,10 @@ import styles from './PlannedPage.module.css'
  * A section that is specified but not built. It states the scope from the
  * proposal and nothing else — no placeholder charts and no sample numbers,
  * because a convincing-looking empty dashboard is worse than an honest one.
+ *
+ * It also says, in one line, what it is going to need and which tab produces
+ * it. Without that, a tab with nothing on it reads as something that broke or
+ * that is still loading, which is the one thing it is not.
  */
 export function PlannedPage({ route }: { route: RouteDef }) {
   useEffect(() => {
@@ -19,6 +23,10 @@ export function PlannedPage({ route }: { route: RouteDef }) {
       <div>
         <h1>{route.title}</h1>
         <p className={styles.lede}>{route.summary}</p>
+        <p className={styles.state}>
+          <Icon name="dot" size={11} strokeWidth={3} />
+          Evaluation is planned.
+        </p>
       </div>
 
       <Panel>
@@ -41,7 +49,7 @@ export function PlannedPage({ route }: { route: RouteDef }) {
       </Panel>
 
       <p className={styles.ref}>
-        Proposal reference: {route.proposalRef} · <Link to="/">Back to pipeline</Link>
+        Proposal reference: {route.proposalRef} · <Link to="/artifacts">View saved adapters</Link>
       </p>
     </div>
   )

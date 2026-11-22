@@ -67,6 +67,10 @@ def prepared_owners(request: Request) -> Dict[str, str]:
     return request.app.state.prepared_dataset_owners
 
 
+def prepared_provenance(request: Request, prepared_id: str) -> dict:
+    return getattr(request.app.state, "prepared_provenance", {}).get(prepared_id, {})
+
+
 def get_prepared(request: Request, prepared_id: str) -> PreparedDataset:
     """The prepared dataset behind an id, or a 404 explaining how to get one."""
     prepared = prepared_datasets(request).get(prepared_id)
@@ -116,6 +120,11 @@ def list_prepared(request: Request) -> list[dict]:
                 name: {
                     "conversation_count": len(partition.conversations),
                     "qa_count": len(partition.qa),
+                    "turn_count": sum(
+                        len(session.turns)
+                        for conversation in partition.conversations
+                        for session in conversation.sessions
+                    ),
                     "conversation_ids": [item.id for item in partition.conversations],
                 }
                 for name, partition in (
@@ -160,13 +169,17 @@ def list_questions(
 @router.post("/load", status_code=201)
 def load_dataset(body: LoadDatasetRequest, request: Request) -> dict:
     try:
-        dataset = LoadDataset(LoCoMoAdapter(Path(body.path))).execute()
+        source = LoCoMoAdapter(Path(body.path))
+        dataset = LoadDataset(source).execute()
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Dataset file not found.")
     except (OSError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error))
     dataset_id = str(uuid4())
     datasets(request)[dataset_id] = dataset
+    if not hasattr(request.app.state, "corpus_hashes"):
+        request.app.state.corpus_hashes = {}
+    request.app.state.corpus_hashes[dataset_id] = source.corpus_sha256
     return {
         "dataset_id": dataset_id,
         "conversation_count": len(dataset.conversations),
@@ -214,6 +227,15 @@ def prepare_dataset(dataset_id: str, body: PrepareDatasetRequest, request: Reque
     prepared_id = str(uuid4())
     prepared_datasets(request)[prepared_id] = prepared
     prepared_owners(request)[prepared_id] = dataset_id
+    if not hasattr(request.app.state, "prepared_provenance"):
+        request.app.state.prepared_provenance = {}
+    request.app.state.prepared_provenance[prepared_id] = {
+        "dataset_id": dataset_id,
+        "corpus_sha256": getattr(request.app.state, "corpus_hashes", {}).get(dataset_id),
+        "split_id": body.split_id,
+        "split": asdict(entry[1]),
+        "categories": body.categories,
+    }
     return {
         "dataset_id": dataset_id,
         "split_id": body.split_id,
@@ -242,25 +264,27 @@ def index_dataset(dataset_id: str, body: IndexDatasetRequest, request: Request) 
         raise HTTPException(status_code=404, detail="Prepared dataset not found for this dataset.")
     partition = partition_of(prepared, body.partition)
 
-    # Serialize indexing within this process, including first-time model/collection setup.
-    with memory_index_lock:
-        try:
-            embedder, store = memory_resources(request, ensure_collection=True)
-            indexer = IndexDataset(embedder, store)
-            indexed = getattr(request.app.state, "indexed_conversation_owners", {})
-            request.app.state.indexed_conversation_owners = indexed
-            for conversation in partition.conversations:
-                indexed.pop(conversation.id, None)
-            indexed_count = indexer.execute(partition.conversations, batch_size=body.batch_size)
-            indexed.update((conversation.id, dataset_id) for conversation in partition.conversations)
-        except ValueError as error:
-            raise HTTPException(status_code=409, detail=str(error)) from error
-        except Exception as error:
-            logger.exception("Dataset indexing failed for %s", dataset_id)
-            raise HTTPException(
-                status_code=503,
-                detail="Indexing failed. Check backend logs and retry; earlier batches may have been stored.",
-            ) from error
+    if not memory_index_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Indexing or a reward build is already in progress.")
+    try:
+        embedder, store = memory_resources(request, ensure_collection=True)
+        indexer = IndexDataset(embedder, store)
+        indexed = getattr(request.app.state, "indexed_conversation_owners", {})
+        request.app.state.indexed_conversation_owners = indexed
+        for conversation in partition.conversations:
+            indexed.pop(conversation.id, None)
+        indexed_count = indexer.execute(partition.conversations, batch_size=body.batch_size)
+        indexed.update((conversation.id, dataset_id) for conversation in partition.conversations)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("Dataset indexing failed for %s", dataset_id)
+        raise HTTPException(
+            status_code=503,
+            detail="Indexing failed. Check backend logs and retry; earlier batches may have been stored.",
+        ) from error
+    finally:
+        memory_index_lock.release()
 
     return {
         "dataset_id": dataset_id,

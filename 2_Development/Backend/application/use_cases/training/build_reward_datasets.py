@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from application.ports.memory_store import MemoryStorePort
 from application.ports.models import ContinuationScorerPort, EmbeddingPort, LLMPort, TokenizerPort
@@ -11,7 +11,7 @@ from .build_reward_dataset import BuildRewardDataset, RewardBuildSettings, Rewar
 
 
 REWARD_IDS = ("r0", "r1", "r2", "r3")
-REWARD_PIPELINE_VERSION = 1
+REWARD_PIPELINE_VERSION = 2
 
 
 class BuildRewardDatasets:
@@ -40,8 +40,21 @@ class BuildRewardDatasets:
         answer_max_tokens: int = 64,
         r2_prior_turns: int = 3,
         r3_max_tokens: int = 64,
+        report_progress: Callable[[str, int], None] | None = None,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> dict[str, RewardDataset]:
         self.validate_inputs(train, rewards)
+
+        def interruptible[**P, T](operation: Callable[P, T]) -> Callable[P, T]:
+            if check_cancelled is None:
+                return operation
+
+            def run(*args: P.args, **kwargs: P.kwargs) -> T:
+                check_cancelled()
+                return operation(*args, **kwargs)
+
+            return run
+
         inputs = {}
         for reward in REWARD_IDS:
             if reward not in rewards:
@@ -53,16 +66,16 @@ class BuildRewardDatasets:
                 questions = (
                     TrainingQuestion(qa.id, qa.conversation_id, qa.question) for qa in train.qa
                 )
-                inputs[reward] = R1Builder(reader.execute, reader.fits).execute(
+                inputs[reward] = R1Builder(interruptible(reader.execute), reader.fits).execute(
                     train.conversations, questions
                 )
             elif reward == "r2":
                 inputs[reward] = R2Builder(
-                    self._scorer.mean_log_probability, prior_turns=r2_prior_turns
+                    interruptible(self._scorer.mean_log_probability), prior_turns=r2_prior_turns
                 ).execute(train.conversations, seed=settings.seed)
             elif reward == "r3":
                 inputs[reward] = R3Builder(
-                    lambda prompt: self._model.generate(prompt, max_new_tokens=r3_max_tokens)
+                    interruptible(lambda prompt: self._model.generate(prompt, max_new_tokens=r3_max_tokens))
                 ).execute(train.conversations, seed=settings.seed)
 
         return BuildRewardDataset(
@@ -70,7 +83,8 @@ class BuildRewardDatasets:
             RetrieveMemories(self._embedder, self._store),
             BuildContext(self._tokenizer.count_tokens),
             settings,
-        ).execute(inputs)
+            check_cancelled=check_cancelled,
+        ).execute(inputs, report_progress=report_progress)
 
     @staticmethod
     def validate_inputs(train: DatasetPartition, rewards: Sequence[str]) -> None:

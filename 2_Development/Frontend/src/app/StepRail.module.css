@@ -1,0 +1,39 @@
+/* One segment per setup step. Progress is carried by fill as well as colour,
+   so it survives greyscale and a colour-blind reader. */
+.rail {
+  display: flex;
+  gap: 0.25rem;
+  width: 100%;
+  max-inline-size: 18rem;
+}
+
+.step {
+  flex: 1;
+  height: 0.25rem;
+  border-radius: var(--radius-full);
+  background-color: var(--sunken);
+  border: 1px solid var(--border);
+}
+
+.done {
+  background-color: var(--done);
+  border-color: var(--done);
+}
+
+.now {
+  background-color: var(--running);
+  border-color: var(--running);
+  animation: pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .now {
+    animation: none;
+  }
+}

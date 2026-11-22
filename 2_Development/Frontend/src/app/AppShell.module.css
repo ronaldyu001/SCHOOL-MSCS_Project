@@ -8,13 +8,6 @@
   flex-direction: column;
   min-height: 100svh;
   background-color: var(--canvas);
-  background-image:
-    linear-gradient(to bottom, transparent 0, var(--canvas) 100%),
-    radial-gradient(circle, var(--canvas-grid) 1px, transparent 1.5px);
-  background-size:
-    100% 640px,
-    22px 22px;
-  background-position: top left;
   background-repeat: no-repeat, repeat;
 }
 
@@ -139,6 +132,30 @@
   opacity: 0.55;
 }
 
+/* A tab that cannot do its job yet carries a glyph. It is never dimmed and
+   never disabled: the page behind it explains the wait, and a tab you cannot
+   click is a dead end. */
+.markIcon {
+  flex: none;
+  opacity: 0.75;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
 .tools {
   display: flex;
   align-items: center;
@@ -215,4 +232,22 @@
 .hostMemory {
   color: var(--fg-faint);
   white-space: nowrap;
+}
+
+/* Tools stay alongside the guided workflow. */
+.toolLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: var(--radius-sm);
+}
+
+.toolLink:hover {
+  color: var(--fg);
+  background-color: var(--canvas);
 }

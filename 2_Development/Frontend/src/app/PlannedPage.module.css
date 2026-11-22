@@ -43,3 +43,23 @@
   font-size: var(--text-2xs);
   color: var(--fg-faint);
 }
+
+/* Why the page is empty, said before the scope list. A planned section and a
+   section that is still loading look identical otherwise, and the distinction
+   is the only thing a visitor actually wants here. */
+.state {
+  margin-top: var(--space-3);
+  max-width: var(--measure);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--fg-faint);
+  text-wrap: pretty;
+}
+
+/* Inline rather than a flex row: the sentence ends in a link and a full stop,
+   and a flex gap would push the stop away from the link. */
+.state svg {
+  display: inline-block;
+  margin-right: 0.4em;
+  vertical-align: -0.1em;
+}

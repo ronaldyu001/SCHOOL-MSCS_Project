@@ -1,42 +1,52 @@
 import { useCallback, useEffect, useState } from 'react'
 
-export type ThemePreference = 'system' | 'light' | 'dark'
+export type ThemePreference = 'light' | 'dark'
 
 const STORAGE_KEY = 'mqr.theme'
+
+function prefersDark() {
+  try {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  } catch {
+    return false
+  }
+}
 
 function readStored(): ThemePreference {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored === 'light' || stored === 'dark' || stored === 'system') return stored
+    if (stored === 'light' || stored === 'dark') return stored
   } catch {
     // Private browsing and blocked site data both throw here; fall through.
   }
-  return 'system'
+  // Nothing chosen yet, so open on whatever the OS is set to and stay there.
+  return prefersDark() ? 'dark' : 'light'
 }
 
 /**
- * Pins the theme by setting `data-theme` on <html>. tokens.css treats the
- * absence of that attribute as "follow the OS", so `system` writes nothing.
+ * Two themes, one of them always pinned.
+ *
+ * There used to be a third setting that followed the OS live. It was the
+ * default, which meant the control answered "which theme am I on?" with "it
+ * depends", and the one-button cycle made you pass through it to get back. The
+ * OS now only decides the first visit; after that the choice is the user's and
+ * `data-theme` is always written, so the stylesheet never has to guess.
  */
 export function useTheme() {
-  const [preference, setPreference] = useState<ThemePreference>(readStored)
+  const [theme, setTheme] = useState<ThemePreference>(readStored)
 
   useEffect(() => {
-    const root = document.documentElement
-    if (preference === 'system') root.removeAttribute('data-theme')
-    else root.setAttribute('data-theme', preference)
+    document.documentElement.setAttribute('data-theme', theme)
     try {
-      localStorage.setItem(STORAGE_KEY, preference)
+      localStorage.setItem(STORAGE_KEY, theme)
     } catch {
-      // A pinned theme that cannot be persisted still applies for this session.
+      // A theme that cannot be persisted still applies for this session.
     }
-  }, [preference])
+  }, [theme])
 
-  const cycle = useCallback(() => {
-    setPreference((current) =>
-      current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system',
-    )
+  const toggle = useCallback(() => {
+    setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
   }, [])
 
-  return { preference, setPreference, cycle }
+  return { theme, setTheme, toggle }
 }

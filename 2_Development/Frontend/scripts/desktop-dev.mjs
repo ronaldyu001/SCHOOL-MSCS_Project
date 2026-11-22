@@ -31,9 +31,11 @@ function start(command, args, output = 'inherit', onLine, env = process.env) {
   const stdio = piped ? ['ignore', 'pipe', 'pipe'] : ['ignore', output, output]
   const child = spawn(command, args, { detached: true, stdio, env })
   let stdout = ''
+  let stderr = ''
   if (piped) {
     child.stdout.on('data', (chunk) => { stdout += chunk })
     if (output === 'tee') child.stdout.pipe(process.stdout, { end: false })
+    if (output === 'tee') child.stderr.on('data', (chunk) => { stderr += chunk })
     child.stderr.pipe(process.stderr, { end: false })
     if (onLine) {
       for (const stream of [child.stdout, child.stderr]) {
@@ -46,7 +48,7 @@ function start(command, args, output = 'inherit', onLine, env = process.env) {
   }
   const done = new Promise((resolve, reject) => {
     child.once('error', reject)
-    child.once('close', (code) => resolve({ code, stdout }))
+    child.once('close', (code) => resolve({ code, stdout, stderr }))
   })
   return { child, done }
 }
@@ -117,13 +119,31 @@ async function startServices() {
     'tee',
     (line) => boot.progress('build', line),
   )
-  if (build.code !== 0) throw new Error('Could not build the desktop backend.')
-  boot.finish('build', 'Image ready.')
+  if (build.code !== 0) {
+    const output = `${build.stdout}\n${build.stderr}`
+    const registryUnavailable = output.includes('failed to resolve source metadata') &&
+      /registry-1\.docker\.io[^\r\n]*(?:timeout|no such host|connection refused|network is unreachable)/i.test(output)
+    if (!registryUnavailable) throw new Error('Could not build the desktop backend.')
+
+    const config = await startupCommand([...compose, 'config', '--format', 'json'], 'pipe')
+    if (config.code !== 0) throw new Error('Docker Hub is unreachable and the local backend image could not be checked.')
+    const project = JSON.parse(config.stdout)
+    const backendImage = project.services.backend.image ?? `${project.name}-backend`
+    const cached = await startupCommand(['image', 'inspect', backendImage], 'ignore')
+    if (cached.code !== 0) {
+      throw new Error('Docker Hub is unreachable and no local backend image is available. Restore the connection and retry.')
+    }
+    const message = 'Docker Hub is unreachable. Using the last built backend image.'
+    console.warn(message)
+    boot.finish('build', message)
+  } else {
+    boot.finish('build', 'Image ready.')
+  }
 
   mayHaveContainers = true
   boot.begin('gpu', 'Checking whether this host can give the container a GPU.')
   const gpu = await startupCommand(
-    [...compose, '-f', gpuOverride, 'run', '--rm', '--no-deps', '-T',
+    [...compose, '-f', gpuOverride, 'run', '--pull', 'never', '--rm', '--no-deps', '-T',
       '--label', owner, 'backend', 'python', '-c',
       'import sys; import torch; sys.exit(0 if torch.cuda.is_available() else 1)'],
     'ignore',
@@ -149,7 +169,7 @@ async function startServices() {
   const services = running.has('qdrant') ? ['backend'] : ['backend', 'qdrant']
   boot.begin('services', `Starting ${services.join(' and ')}, then waiting for the health check.`)
   const up = await startupCommand(
-    [...files, 'up', '-d', '--no-deps', '--wait', ...services],
+    [...files, 'up', '-d', '--no-build', '--no-deps', '--wait', ...services],
     'tee',
     (line) => boot.progress('services', line),
   )

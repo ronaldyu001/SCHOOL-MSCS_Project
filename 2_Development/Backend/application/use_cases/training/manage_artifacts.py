@@ -1,0 +1,72 @@
+from collections.abc import Mapping
+from typing import BinaryIO
+
+from application.ports.training.artifacts import ArtifactStore
+from .build_reward_dataset import RewardDataset
+from .training_run import ACTIVE_STATUSES, ArtifactConflict, ArtifactKind, utc_now
+
+
+class SaveRewardDatasets:
+    def __init__(self, store: ArtifactStore) -> None:
+        self.store = store
+
+    def execute(self, datasets: Mapping[str, RewardDataset], provenance: dict) -> dict[str, dict]:
+        with self.store.transaction():
+            return self.store.save_datasets(datasets, provenance)
+
+
+class ReadArtifacts:
+    def __init__(self, store: ArtifactStore) -> None:
+        self.store = store
+
+    def execute(self, kind: ArtifactKind, artifact_id: str | None = None) -> dict | list[dict]:
+        with self.store.transaction():
+            self.store.recover_interrupted()
+            if artifact_id is None:
+                return self.store.list_artifacts(kind)
+            return self.store.get(kind, artifact_id)
+
+
+class UpdateArtifact:
+    def __init__(self, store: ArtifactStore) -> None:
+        self.store = store
+
+    def execute(self, kind: ArtifactKind, artifact_id: str, changes: dict[str, str]) -> dict:
+        if not changes or changes.keys() - {"name", "notes"}:
+            raise ValueError("Provide a name or notes to update.")
+        with self.store.transaction():
+            self.store.recover_interrupted()
+            artifact = self.store.get(kind, artifact_id)
+            artifact.update(changes, updated_at=utc_now())
+            return self.store.write(kind, artifact_id, artifact)
+
+
+class DeleteArtifact:
+    def __init__(self, store: ArtifactStore) -> None:
+        self.store = store
+
+    def execute(self, kind: ArtifactKind, artifact_id: str) -> None:
+        with self.store.transaction():
+            self.store.recover_interrupted()
+            artifact = self.store.get(kind, artifact_id)
+            runs = self.store.list_artifacts("runs") if kind == "datasets" else [artifact]
+            if any(
+                run["status"] in ACTIVE_STATUSES
+                and (kind == "runs" or run["dataset_id"] == artifact["id"])
+                for run in runs
+            ):
+                raise ArtifactConflict("This artifact is in use by an active training run.")
+            self.store.delete(kind, artifact_id)
+
+
+class DownloadArtifact:
+    def __init__(self, store: ArtifactStore) -> None:
+        self.store = store
+
+    def execute(self, kind: ArtifactKind, artifact_id: str) -> BinaryIO:
+        with self.store.transaction():
+            self.store.recover_interrupted()
+            artifact = self.store.get(kind, artifact_id)
+            if kind == "runs" and artifact["status"] != "completed":
+                raise ArtifactConflict("The adapter is available after the run completes.")
+            return self.store.bundle(kind, artifact_id)

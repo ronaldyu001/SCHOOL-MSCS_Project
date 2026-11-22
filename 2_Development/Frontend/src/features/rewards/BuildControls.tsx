@@ -39,9 +39,12 @@ export function BuildControls({
     settings.rewards.includes('r0') || settings.rewards.includes('r1')
   const missingQuestions =
     needsQuestions && counts !== undefined && counts.qa_count === 0
+  const limit = settings.maxInputsPerReward
+  const validLimit = limit === null || (Number.isInteger(limit) && limit >= 1)
   const ready =
     settings.preparedId.trim() !== '' &&
     settings.rewards.length > 0 &&
+    validLimit &&
     !missingQuestions
 
   return (
@@ -74,14 +77,15 @@ export function BuildControls({
             </SelectField>
 
             <TextField
-              label="Questions to try"
+              label="Max inputs per reward"
               type="number"
               min={1}
-              max={50}
-              value={settings.maxInputsPerReward}
+              placeholder="Full training split"
+              hint="Leave blank to build from the full training split."
+              value={limit ?? ''}
               disabled={busy}
               onChange={(event) =>
-                update('maxInputsPerReward', Number(event.target.value))
+                update('maxInputsPerReward', event.target.value === '' ? null : Number(event.target.value))
               }
             />
 
@@ -103,6 +107,16 @@ export function BuildControls({
               selected={settings.rewards}
               disabled={busy}
               onToggle={build.toggleReward}
+            />
+          ) : null}
+
+          {settings.rewards.includes('r0') ? (
+            <CheckGroup
+              legend="R0 ties"
+              options={[{ value: 'keep', label: 'Keep one rewrite when every candidate scores 1' }]}
+              selected={settings.keepAllOneTies ? ['keep'] : []}
+              disabled={busy}
+              onToggle={() => update('keepAllOneTies', !settings.keepAllOneTies)}
             />
           ) : null}
 
@@ -165,24 +179,6 @@ export function BuildControls({
                   update('answerMaxTokens', Number(event.target.value))
                 }
               />
-              <TextField
-                label="Model"
-                placeholder="owner/model"
-                value={settings.modelId}
-                spellCheck={false}
-                autoComplete="off"
-                disabled={busy}
-                onChange={(event) => update('modelId', event.target.value)}
-                hint="Blank uses the default."
-              />
-              <TextField
-                label="Revision"
-                value={settings.revision}
-                spellCheck={false}
-                autoComplete="off"
-                disabled={busy}
-                onChange={(event) => update('revision', event.target.value)}
-              />
             </div>
           </Disclosure>
         </div>
@@ -217,9 +213,14 @@ export function BuildControls({
           >
             {actionLabel}
           </Button>
-          <p className={styles.estimate}>
-            Roughly {count(estimate.total)} calls to the model.
-          </p>
+          {busy ? (
+            <Button variant="secondary" disabled={!build.canStop} onClick={() => void build.stop()}>
+              Stop build
+            </Button>
+          ) : null}
+          {estimate.total !== null ? (
+            <p className={styles.estimate}>Roughly {count(estimate.total)} calls to the model.</p>
+          ) : null}
         </div>
       </PanelBody>
     </>

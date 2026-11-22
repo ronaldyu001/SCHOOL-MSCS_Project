@@ -51,7 +51,7 @@ export function BootGate({ children }: { children: ReactNode }) {
 
   if (boot.ready) return <>{children}</>
 
-  const containerFeed = boot.launcher !== null
+  const containerFeed = boot.hadLauncher
 
   return (
     <div className={styles.screen}>

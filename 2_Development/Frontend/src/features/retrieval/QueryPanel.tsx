@@ -171,27 +171,6 @@ export function QueryPanel({ retrieval }: { retrieval: Retrieval }) {
                     : 'Picking a dataset question fills this in. Without it you still see what came back, just not whether it was right.'
                 }
               />
-
-              <div className={styles.grid}>
-                <TextField
-                  label="Model"
-                  placeholder="owner/model"
-                  value={settings.modelId}
-                  spellCheck={false}
-                  autoComplete="off"
-                  disabled={busy}
-                  onChange={(event) => update('modelId', event.target.value)}
-                  hint="Blank uses the default."
-                />
-                <TextField
-                  label="Revision"
-                  value={settings.revision}
-                  spellCheck={false}
-                  autoComplete="off"
-                  disabled={busy}
-                  onChange={(event) => update('revision', event.target.value)}
-                />
-              </div>
             </div>
           </Disclosure>
         </div>

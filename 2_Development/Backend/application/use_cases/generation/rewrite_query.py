@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -40,10 +41,13 @@ class RewriteQuery:
         count: int,
         temperature: float,
         max_new_tokens: int,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> RewriteCandidates:
         prompt = _REWRITE_TEMPLATE.format(text=text.strip())
         unique: dict[str, str] = {}
         for index in range(count):
+            if check_cancelled is not None:
+                check_cancelled()
             seed_bytes = sha256(f"{seed}:{input_id}:{index}".encode()).digest()
             candidate_seed = int.from_bytes(seed_bytes[:8], "big") >> 1
             generated = self._model.generate(

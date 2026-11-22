@@ -62,6 +62,12 @@ class TransformersLLMAdapter:
 
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
+        from .checkpoint import resolve_hub_revision
+
+        self._resolved_revision = None
+        if not Path(model_name_or_path).is_dir():
+            revision = resolve_hub_revision(str(model_name_or_path), revision)
+            self._resolved_revision = revision
         self._tokenizer = AutoTokenizer.from_pretrained(
             model_name_or_path, revision=revision, trust_remote_code=False
         )
@@ -69,6 +75,10 @@ class TransformersLLMAdapter:
             model_name_or_path, revision=revision, trust_remote_code=False
         ).to(device)
         self._model.eval()
+
+    @property
+    def resolved_revision(self) -> str | None:
+        return self._resolved_revision
 
     @property
     def context_window(self) -> int | None:

@@ -1,33 +1,81 @@
-import { NavLink, Outlet } from 'react-router'
-import { BrandMark, Icon } from '@/components/ui'
+import { useMemo } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router'
+import { BrandMark, Icon, type IconName } from '@/components/ui'
+import { useArtifacts, type Artifacts } from '@/features/artifacts/useArtifacts'
+import { useModel } from '@/features/harness/useModel'
 import { usePipeline } from '@/features/pipeline/usePipeline'
+import { useRetrieval } from '@/features/retrieval/useRetrieval'
+import { useRewardBuild, useRewardCatalogue } from '@/features/rewards/useRewardBuild'
 import { bytes, percent } from '@/lib/format'
 import { useHealth } from '@/lib/useHealth'
 import { useSystemMemory } from '@/lib/useSystemMemory'
-import { useTheme, type ThemePreference } from '@/lib/useTheme'
+import { useTheme } from '@/lib/useTheme'
+import { DataBanner } from './DataBanner'
+import { readDataReadiness, type DataReadiness } from './data-readiness'
 import { HealthIndicator } from './HealthIndicator'
-import { ROUTES } from './routes'
+import { PRIMARY_ROUTES, REQUIREMENT_SOURCE, SETUP_ROUTE, TOOL_ROUTES, type RouteDef } from './routes'
 import type { ShellContext } from './shell-context'
+import { useWorkspace } from './useWorkspace'
+import { nextRequirement } from './workflow'
 import styles from './AppShell.module.css'
 
-const THEME_ICON: Record<ThemePreference, 'monitor' | 'sun' | 'moon'> = {
-  system: 'monitor',
-  light: 'sun',
-  dark: 'moon',
-}
+/**
+ * Why a tab cannot do its job yet, as one glyph.
+ *
+ * The navigation is the first thing you touch and the last thing that used to
+ * know anything: every tab looked equally ready, so finding out that Search
+ * had nothing to search meant clicking it. A tab is never disabled — the page
+ * behind it explains itself — but it does say up front which ones are waiting
+ * and on what.
+ */
+type NavMark = { icon: IconName; word: string; busy?: boolean; planned?: boolean }
 
-const THEME_LABEL: Record<ThemePreference, string> = {
-  system: 'Theme: following system',
-  light: 'Theme: light',
-  dark: 'Theme: dark',
+function markFor(route: RouteDef, data: DataReadiness, artifacts: Artifacts): NavMark | null {
+  const prerequisite = nextRequirement(route, data, artifacts)
+  if (prerequisite) {
+    if (prerequisite.state === 'checking') return null
+    if (prerequisite.requirement === 'data' && data.state === 'building') {
+      return { icon: 'spinner', word: 'waiting for setup', busy: true }
+    }
+    return { icon: 'lock', word: `requires ${REQUIREMENT_SOURCE[prerequisite.requirement].label}` }
+  }
+  if (route.path === SETUP_ROUTE.path && data.progress.running) {
+    return { icon: 'spinner', word: 'setting up the data', busy: true }
+  }
+  if (route.status === 'planned') {
+    return { icon: 'dot', word: 'not built yet', planned: true }
+  }
+  return null
 }
 
 export function AppShell() {
   const health = useHealth()
   const pipeline = usePipeline()
+  const workspace = useWorkspace()
   const systemMemory = useSystemMemory()
-  const { preference, cycle } = useTheme()
+  const { theme, toggle } = useTheme()
+  const { pathname } = useLocation()
   const memory = systemMemory.snapshot
+
+  const data = useMemo(
+    () => readDataReadiness(workspace, pipeline.state),
+    [workspace, pipeline.state],
+  )
+
+  // The pages' own run state, held here so that moving between tabs cannot
+  // reset it. Each takes what the shell already knows rather than reading the
+  // outlet context, which does not exist this far up the tree.
+  const model = useModel()
+  const source = useMemo(
+    () => ({ pipeline, workspace, model }),
+    [model, pipeline, workspace],
+  )
+  const retrieval = useRetrieval(source)
+  const rewardBuild = useRewardBuild(source)
+  const rewardCatalogue = useRewardCatalogue()
+  const artifacts = useArtifacts(rewardBuild.result?.results[0]?.dataset_id, pathname)
+
+  const nextTheme = theme === 'dark' ? 'light' : 'dark'
 
   return (
     <div className={styles.shell}>
@@ -37,7 +85,7 @@ export function AppShell() {
 
       <header className={styles.header}>
         <div className={styles.headerInner}>
-          <NavLink to="/" className={styles.brand}>
+          <NavLink to={SETUP_ROUTE.path} className={styles.brand}>
             <BrandMark className={styles.mark} />
             <span className={styles.brandText}>
               <span className={styles.brandName}>Memory Query Rewriter</span>
@@ -45,29 +93,46 @@ export function AppShell() {
             </span>
           </NavLink>
 
-          <nav className={styles.nav} aria-label="Project sections">
-            {ROUTES.map((route) => (
-              <NavLink
-                key={route.path}
-                to={route.path}
-                end={route.path === '/'}
-                title={route.summary}
-                className={({ isActive }) =>
-                  `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`
-                }
-              >
-                {route.label}
-                {route.status === 'planned' ? (
-                  <>
-                    <span className={styles.plannedDot} aria-hidden="true" />
-                    <span className="sr-only">(planned)</span>
-                  </>
-                ) : null}
-              </NavLink>
-            ))}
+          <nav className={styles.nav} aria-label="Guided workflow">
+            {PRIMARY_ROUTES.map((route) => {
+              const mark = markFor(route, data, artifacts)
+              return (
+                <NavLink
+                  key={route.path}
+                  to={route.path}
+                  title={mark ? `${route.summary} — ${mark.word}` : route.summary}
+                  className={({ isActive }) =>
+                    `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`
+                  }
+                >
+                  {route.label}
+                  {mark ? (
+                    <>
+                      {mark.planned ? (
+                        <span className={styles.plannedDot} aria-hidden="true" />
+                      ) : (
+                        <Icon
+                          name={mark.icon}
+                          size={12}
+                          className={`${styles.markIcon} ${mark.busy ? styles.spin : ''}`}
+                        />
+                      )}
+                      <span className="sr-only">({mark.word})</span>
+                    </>
+                  ) : null}
+                </NavLink>
+              )
+            })}
           </nav>
 
           <div className={styles.tools}>
+            {TOOL_ROUTES.map((route) => (
+              <NavLink key={route.path} to={route.path} title={route.summary}
+                className={({ isActive }) => `${styles.toolLink} ${isActive ? styles.navLinkActive : ''}`}>
+                <Icon name={route.icon} size={14} />
+                {route.label}
+              </NavLink>
+            ))}
             <HealthIndicator
               state={health.state}
               checkedAt={health.checkedAt}
@@ -76,18 +141,35 @@ export function AppShell() {
             <button
               type="button"
               className={styles.navLink}
-              onClick={cycle}
-              aria-label={`${THEME_LABEL[preference]}. Activate to change.`}
-              title={THEME_LABEL[preference]}
+              onClick={toggle}
+              aria-label={`Switch to the ${nextTheme} theme`}
+              title={`${theme === 'dark' ? 'Dark' : 'Light'} theme · switch to ${nextTheme}`}
             >
-              <Icon name={THEME_ICON[preference]} size={15} />
+              <Icon name={theme === 'dark' ? 'moon' : 'sun'} size={15} />
             </button>
           </div>
         </div>
       </header>
 
+      <DataBanner data={data} onSetup={pathname === SETUP_ROUTE.path} />
+
       <main className={styles.main} id="main">
-        <Outlet context={{ health, pipeline, systemMemory } satisfies ShellContext} />
+        <Outlet
+          context={
+            {
+              health,
+              pipeline,
+              workspace,
+              model,
+              systemMemory,
+              data,
+              retrieval,
+              rewardBuild,
+              rewardCatalogue,
+              artifacts,
+            } satisfies ShellContext
+          }
+        />
       </main>
 
       <footer className={styles.footer}>

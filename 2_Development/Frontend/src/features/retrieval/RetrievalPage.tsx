@@ -1,16 +1,17 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router'
 import { Button, Callout } from '@/components/ui'
+import { DataGate } from '@/app/DataGate'
 import { useShell } from '@/app/shell-context'
+import { ModelPanel } from '@/features/harness/ModelPanel'
 import { ComparisonPanel } from './ComparisonPanel'
 import { QueryDetail } from './QueryDetail'
 import { QueryPanel } from './QueryPanel'
-import { useRetrieval } from './useRetrieval'
 import styles from './RetrievalPage.module.css'
 
 export function RetrievalPage() {
-  const retrieval = useRetrieval()
-  const { health } = useShell()
+  // The shell holds this, so a search survives a trip to another tab.
+  const { health, data, retrieval, model } = useShell()
 
   useEffect(() => {
     document.title = 'Search · Memory Query Rewriter'
@@ -36,52 +37,65 @@ export function RetrievalPage() {
         </Callout>
       ) : null}
 
-      <QueryPanel retrieval={retrieval} />
+      {/* The controls are the only part that needs the index. The heading above
+          stays put either way, so arriving here early still looks like Search
+          rather than like a different screen. */}
+      <DataGate
+        data={data}
+        page="Search"
+        emptyHeading="Nothing to search yet"
+        emptyExplain="Load the conversations once and this is where you ask questions of them. It takes a few minutes, mostly waiting."
+      >
+        <ModelPanel model={model} busy={retrieval.busy} />
 
-      {rewrite.status === 'running' ? (
-        <Callout tone="info" icon="refresh">
-          Writing {retrieval.settings.candidates} versions of the question. The first
-          run loads the model, so give it a minute.
-        </Callout>
-      ) : null}
+        <QueryPanel retrieval={retrieval} />
 
-      {rewrite.status === 'failed' ? (
-        <Callout tone="error" title="Rewriting failed" role="alert">
-          <p>{rewrite.error}</p>
-        </Callout>
-      ) : null}
+        {rewrite.status === 'running' ? (
+          <Callout tone="info" icon="refresh">
+            Writing {retrieval.settings.candidates} versions of the question. The first
+            run loads the model, so give it a minute.
+          </Callout>
+        ) : null}
 
-      {rewrite.status === 'done' && rewrite.result.queries.length < 2 ? (
-        <Callout tone="warn" title="The rewrites all came out the same">
-          <p>Turn up Variety or ask for more rewrites to get different wordings.</p>
-        </Callout>
-      ) : null}
+        {rewrite.status === 'failed' ? (
+          <Callout tone="error" title="Rewriting failed" role="alert">
+            <p>{rewrite.error}</p>
+          </Callout>
+        ) : null}
 
-      {search.status === 'running' ? (
-        <Callout tone="info" icon="refresh">
-          Searching.
-        </Callout>
-      ) : null}
+        {rewrite.status === 'done' && rewrite.result.queries.length < 2 ? (
+          <Callout tone="warn" title="The rewrites all came out the same">
+            <p>Turn up Variety or ask for more rewrites to get different wordings.</p>
+          </Callout>
+        ) : null}
 
-      {search.status === 'failed' ? (
-        <Callout tone="error" title="Search failed" role="alert">
-          <p>{search.error}</p>
-          <p className={styles.hint}>
-            If nothing is indexed yet, run <Link to="/">the pipeline</Link> first.
-          </p>
-        </Callout>
-      ) : null}
+        {search.status === 'running' ? (
+          <Callout tone="info" icon="refresh">
+            Searching.
+          </Callout>
+        ) : null}
 
-      {retrieval.result && search.status === 'done' ? (
-        <>
-          <ComparisonPanel
-            result={retrieval.result}
-            focus={retrieval.focus}
-            onFocus={retrieval.setFocus}
-          />
-          <QueryDetail retrieval={retrieval} />
-        </>
-      ) : null}
+        {search.status === 'failed' ? (
+          <Callout tone="error" title="Search failed" role="alert">
+            <p>{search.error}</p>
+            <p className={styles.hint}>
+              If nothing is indexed any more, <Link to="/setup">set the data up</Link>{' '}
+              again.
+            </p>
+          </Callout>
+        ) : null}
+
+        {retrieval.result && search.status === 'done' ? (
+          <>
+            <ComparisonPanel
+              result={retrieval.result}
+              focus={retrieval.focus}
+              onFocus={retrieval.setFocus}
+            />
+            <QueryDetail retrieval={retrieval} />
+          </>
+        ) : null}
+      </DataGate>
     </div>
   )
 }

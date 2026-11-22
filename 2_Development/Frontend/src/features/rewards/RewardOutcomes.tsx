@@ -46,6 +46,9 @@ export function RewardOutcomes({ result, definition, aside }: RewardOutcomesProp
             accent
           />
           <Stat label="Thrown out" value={count(result.attempted - result.kept)} />
+          {result.kept_all_one_ties ? (
+            <Stat label="Kept from all-one ties" value={count(result.kept_all_one_ties)} />
+          ) : null}
         </StatGrid>
 
         {result.attempted === 0 ? (
@@ -93,15 +96,15 @@ export function RewardOutcomes({ result, definition, aside }: RewardOutcomesProp
                 highlight: outcome.skip_reason === null,
                 cells: [
                   outcome.candidate_count === 0 ? '—' : count(outcome.candidate_count),
-                  outcome.winning_score === null
-                    ? '—'
-                    : outcome.winning_score.toFixed(3),
+                  (outcome.winning_score ?? outcome.tied_score)?.toFixed(3) ?? '—',
                   outcome.skip_reason ? (
                     <span className={styles.skip}>
                       {reasonLabel(outcome.skip_reason)}
                     </span>
                   ) : (
-                    <span className={styles.keptFlag}>kept</span>
+                    <span className={styles.keptFlag}>
+                      {outcome.kept_all_one_tie ? 'kept from all-one tie' : 'kept'}
+                    </span>
                   ),
                 ],
               }))}

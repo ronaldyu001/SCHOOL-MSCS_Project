@@ -236,6 +236,7 @@ export function getSystemMemory() {
 
 export type PreparedPartition = PartitionCounts & {
   conversation_ids: string[]
+  turn_count?: number
 }
 
 export type PreparedHandle = {
@@ -518,14 +519,18 @@ export type InputOutcome = {
   skip_reason: string | null
   winning_score: number | null
   top_ties: number
+  tied_score?: number | null
+  kept_all_one_tie?: boolean
 }
 
 export type RewardResult = {
   reward: RewardId
+  dataset_id: string
   attempted: number
   kept: number
   skipped: Record<string, number>
   tied_winners: number
+  kept_all_one_ties?: number
   examples: TrainingExample[]
   outcomes: InputOutcome[]
 }
@@ -538,6 +543,7 @@ export type RewardBuildSettings = {
   top_k: number
   token_budget: number
   max_inputs_per_reward: number | null
+  keep_all_one_ties?: boolean
   answer_max_tokens: number
   r2_prior_turns: number
   r3_max_tokens: number
@@ -562,7 +568,8 @@ export type RewardDatasetResponse = {
 export type RewardBuildInput = Checkpoint & {
   preparedId: string
   rewards: RewardId[]
-  maxInputsPerReward: number
+  maxInputsPerReward: number | null
+  keepAllOneTies: boolean
   seed: number
   candidates: number
   temperature: number
@@ -574,14 +581,34 @@ export type RewardBuildInput = Checkpoint & {
   r3MaxTokens: number
 }
 
-export function buildRewardDatasets(input: RewardBuildInput) {
-  // No timeout: every input samples several rewrites and scores each of them
-  // against the reader, which is minutes of CPU work even for a small pilot.
-  return postJson<RewardDatasetResponse>('/rewards/datasets', {
+export type RewardBuildProgress = Partial<Record<RewardId, number>>
+
+type RewardBuildStatus = {
+  id: string
+  attempted: RewardBuildProgress
+} & (
+  | { status: 'running' | 'cancelling' | 'cancelled' | 'saving'; result: null }
+  | { status: 'completed'; result: RewardDatasetResponse }
+)
+
+export type RewardBuildUpdate = Pick<RewardBuildStatus, 'id' | 'status' | 'attempted'>
+
+export function cancelRewardBuild(id: string) {
+  return request<RewardBuildStatus>(
+    `/rewards/builds/${encodeURIComponent(id)}/cancel`, { method: 'POST' }, { timeoutMs: 10_000 },
+  )
+}
+
+export async function buildRewardDatasets(
+  input: RewardBuildInput,
+  onProgress: (progress: RewardBuildUpdate) => void,
+) {
+  let job = await postJson<RewardBuildStatus>('/rewards/builds', {
     ...checkpoint(input),
     prepared_id: input.preparedId,
     rewards: input.rewards,
     max_inputs_per_reward: input.maxInputsPerReward,
+    keep_all_one_ties: input.keepAllOneTies,
     seed: input.seed,
     candidates: input.candidates,
     temperature: input.temperature,
@@ -591,7 +618,92 @@ export function buildRewardDatasets(input: RewardBuildInput) {
     answer_max_tokens: input.answerMaxTokens,
     r2_prior_turns: input.r2PriorTurns,
     r3_max_tokens: input.r3MaxTokens,
-  })
+  }, { timeoutMs: 10_000 })
+  while (true) {
+    const { id, status, attempted } = job
+    onProgress({ id, status, attempted })
+    if (status === 'completed' || status === 'cancelled') return job.result
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    job = await request<RewardBuildStatus>(
+      `/rewards/builds/${job.id}`, { method: 'GET' }, { timeoutMs: 15_000 },
+    )
+  }
+}
+
+export type ArtifactKind = 'datasets' | 'runs'
+export type ArtifactMetadata = { name: string; notes: string }
+
+type SavedArtifact = ArtifactMetadata & {
+  id: string
+  reward: RewardId
+  created_at: string
+  dataset_sha256: string
+}
+
+export type SavedRewardDataset = SavedArtifact & {
+  build_id: string
+  row_count: number
+  summary: Pick<RewardResult, 'attempted' | 'skipped' | 'kept_all_one_ties'>
+  provenance: {
+    model_id?: string
+    model_revision?: string | null
+    prepared_id?: string
+    train_conversation_ids?: string[]
+    settings?: Partial<RewardBuildSettings>
+  }
+}
+
+export type TrainingRun = SavedArtifact & {
+  dataset_id: string
+  model_id: string
+  model_revision: string | null
+  requested_revision: string | null
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'interrupted'
+  progress: { phase?: string; step?: number; total_steps?: number; loss?: number }
+  metrics: Record<string, number>
+  error: string | null
+}
+
+const artifactPaths: Record<ArtifactKind, string> = {
+  datasets: '/rewards/datasets',
+  runs: '/training/runs',
+}
+
+function artifactPath(kind: ArtifactKind, id: string) {
+  return `${artifactPaths[kind]}/${encodeURIComponent(id)}`
+}
+
+export function listSavedRewardDatasets() {
+  return request<SavedRewardDataset[]>(artifactPaths.datasets, { method: 'GET' }, { timeoutMs: 10_000 })
+}
+
+export function listTrainingRuns() {
+  return request<TrainingRun[]>(artifactPaths.runs, { method: 'GET' }, { timeoutMs: 10_000 })
+}
+
+export function startTrainingRun(input: Checkpoint & { datasetId: string; epochs: number; name?: string }) {
+  return postJson<TrainingRun>(artifactPaths.runs, {
+    ...checkpoint(input),
+    dataset_id: input.datasetId,
+    settings: { epochs: input.epochs },
+    name: input.name || undefined,
+  }, { timeoutMs: 10_000 })
+}
+
+export function updateArtifact(kind: ArtifactKind, id: string, metadata: ArtifactMetadata) {
+  return request<SavedRewardDataset | TrainingRun>(artifactPath(kind, id), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(metadata),
+  }, { timeoutMs: 10_000 })
+}
+
+export function deleteArtifact(kind: ArtifactKind, id: string) {
+  return request<void>(artifactPath(kind, id), { method: 'DELETE' }, { timeoutMs: 10_000 })
+}
+
+export function artifactDownloadUrl(kind: ArtifactKind, id: string) {
+  return `${BASE}${artifactPath(kind, id)}/download`
 }
 
 export type DatasetQuestion = {

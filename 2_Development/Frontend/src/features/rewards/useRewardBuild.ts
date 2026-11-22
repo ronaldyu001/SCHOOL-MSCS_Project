@@ -1,21 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   buildRewardDatasets,
-  listPrepared,
+  cancelRewardBuild,
   listRewards,
   REWARD_IDS,
-  type PreparedHandle,
+  type PreparedPartition,
+  type RewardBuildUpdate,
   type RewardDatasetResponse,
   type RewardDef,
   type RewardId,
 } from '@/lib/api'
-import { resultOf, useAsyncRun } from '@/lib/useAsyncRun'
-import { useShell } from '@/app/shell-context'
+import { describeError, resultOf, useAsyncRun } from '@/lib/useAsyncRun'
+import type { ShellData } from '@/app/shell-context'
 
 export type BuildSettings = {
   preparedId: string
   rewards: RewardId[]
-  maxInputsPerReward: number
+  maxInputsPerReward: number | null
+  keepAllOneTies: boolean
   seed: number
   candidates: number
   temperature: number
@@ -25,15 +27,14 @@ export type BuildSettings = {
   answerMaxTokens: number
   r2PriorTurns: number
   r3MaxTokens: number
-  modelId: string
-  revision: string
 }
 
-/** The route's own defaults, which are sized for a pilot rather than a run. */
+/** Start with a small pilot. Clearing the input limit uses the full train split. */
 export const BUILD_DEFAULTS: BuildSettings = {
   preparedId: '',
   rewards: [...REWARD_IDS],
   maxInputsPerReward: 2,
+  keepAllOneTies: false,
   seed: 123,
   candidates: 4,
   temperature: 0.7,
@@ -43,8 +44,6 @@ export const BUILD_DEFAULTS: BuildSettings = {
   answerMaxTokens: 64,
   r2PriorTurns: 3,
   r3MaxTokens: 64,
-  modelId: '',
-  revision: '',
 }
 
 /**
@@ -60,29 +59,32 @@ export const BUILD_DEFAULTS: BuildSettings = {
  * thousands of tokens of prefill and dominates everything else in the build.
  * `fullHistoryReads` is reported separately for that reason.
  */
-export function estimateCalls(settings: BuildSettings) {
-  const inputs = settings.maxInputsPerReward
-  const shared = settings.rewards.includes('r0') && settings.rewards.includes('r1')
-  const candidateSets = shared ? settings.rewards.length - 1 : settings.rewards.length
-  const rewrites = candidateSets * inputs * settings.candidates
+export function estimateCalls(settings: BuildSettings, counts?: PreparedPartition) {
+  const limit = settings.maxInputsPerReward
+  const questionInputs = Math.min(limit ?? Infinity, counts?.qa_count ?? limit ?? Infinity)
+  const turnInputs = Math.min(limit ?? Infinity, counts?.turn_count ?? limit ?? Infinity)
+  const r0 = settings.rewards.includes('r0')
+  const r1 = settings.rewards.includes('r1')
+  const r2 = settings.rewards.includes('r2')
+  const r3 = settings.rewards.includes('r3')
+  const candidateSets = (r0 || r1 ? questionInputs : 0) +
+    (r2 ? turnInputs : 0) + (r3 ? turnInputs : 0)
+  const rewrites = candidateSets * settings.candidates
   // R1 answers once from the full history and once per candidate context; R2
   // scores one baseline continuation plus one per candidate; R3 writes one
   // question per input.
-  const reader = settings.rewards.includes('r1')
-    ? inputs * (settings.candidates + 1)
-    : 0
-  const scoring = settings.rewards.includes('r2')
-    ? inputs * (settings.candidates + 1)
-    : 0
-  const synthetic = settings.rewards.includes('r3') ? inputs : 0
-  const fullHistoryReads = settings.rewards.includes('r1') ? inputs : 0
+  const reader = r1 ? questionInputs * (settings.candidates + 1) : 0
+  const scoring = r2 ? turnInputs * (settings.candidates + 1) : 0
+  const synthetic = r3 ? turnInputs : 0
+  const fullHistoryReads = r1 ? questionInputs : 0
+  const total = rewrites + reader + scoring + synthetic
   return {
     rewrites,
     reader,
     scoring,
     synthetic,
     fullHistoryReads,
-    total: rewrites + reader + scoring + synthetic,
+    total: Number.isFinite(total) ? total : null,
   }
 }
 
@@ -106,61 +108,52 @@ export function useRewardCatalogue() {
 }
 
 /**
- * Prepared datasets the backend still holds, plus the one this session made.
+ * Prepared datasets available to build from.
  *
- * A build needs a prepared id and an indexed collection. The pipeline produces
- * both, but a reload loses only the browser's half, so the backend's list is
- * offered too.
+ * Read from the shared workspace rather than fetched again here, so a page
+ * that only needs to know "is there a dataset" does not cost another request.
  */
-export function usePreparedHandles() {
-  const { pipeline } = useShell()
-  const [handles, setHandles] = useState<PreparedHandle[]>([])
+export function usePreparedHandles({ pipeline, workspace }: ShellData) {
   const prepared = resultOf(pipeline.state.prepare)
   const indexed = resultOf(pipeline.state.index)
 
-  // A failed read leaves the previous list alone: losing the handles because
-  // one poll failed would strand a build that is otherwise ready to run.
-  const refresh = useCallback(async () => {
-    try {
-      setHandles(await listPrepared())
-    } catch {
-      // Reachability is already reported by the health indicator.
-    }
-  }, [])
-
-  const preparedId = prepared?.prepared_id
-  useEffect(() => {
-    let cancelled = false
-    void listPrepared()
-      .then((next) => {
-        if (!cancelled) setHandles(next)
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [preparedId])
-
   return useMemo(
     () => ({
-      handles,
-      refresh,
+      handles: workspace.handles,
+      refresh: workspace.refresh,
       sessionPreparedId: prepared?.prepared_id ?? null,
       indexedPartition: indexed?.partition ?? null,
       indexedCollection: indexed?.collection ?? null,
     }),
-    [handles, indexed, prepared, refresh],
+    [indexed, prepared, workspace],
   )
 }
 
-export function useRewardBuild(initial: Partial<BuildSettings> = {}) {
+/**
+ * The build form, the run, and what it produced.
+ *
+ * Owned by the shell rather than the training page. A build is minutes of CPU
+ * work, and when this lived in the page, leaving the tab discarded the result
+ * — the request was never cancelled, so the backend finished the build and the
+ * answer arrived to nobody. `reset` is the only thing that clears it.
+ */
+export function useRewardBuild(
+  source: ShellData,
+  initial: Partial<BuildSettings> = {},
+) {
   const [settings, setSettings] = useState<BuildSettings>({
     ...BUILD_DEFAULTS,
     ...initial,
   })
-  const prepared = usePreparedHandles()
-  const build = useAsyncRun<RewardDatasetResponse>()
+  const prepared = usePreparedHandles(source)
+  const build = useAsyncRun<RewardDatasetResponse | null>()
+  const [job, setJob] = useState<RewardBuildUpdate | null>(null)
+  const [stopRequested, setStopRequested] = useState(false)
+  const [stopError, setStopError] = useState<string | null>(null)
   const settingsRef = useRef(settings)
+  // Shared with the search page: a build and the searches you sanity-checked
+  // it against should not be able to come from different checkpoints.
+  const { modelId, revision } = source.model
 
   const update = useCallback(
     <K extends keyof BuildSettings>(key: K, value: BuildSettings[K]) => {
@@ -182,11 +175,15 @@ export function useRewardBuild(initial: Partial<BuildSettings> = {}) {
 
   const run = useCallback(() => {
     const current = settingsRef.current
+    setJob(null)
+    setStopRequested(false)
+    setStopError(null)
     return build.run(() =>
       buildRewardDatasets({
         preparedId: current.preparedId.trim(),
         rewards: current.rewards,
         maxInputsPerReward: current.maxInputsPerReward,
+        keepAllOneTies: current.rewards.includes('r0') && current.keepAllOneTies,
         seed: current.seed,
         candidates: current.candidates,
         temperature: current.temperature,
@@ -196,11 +193,24 @@ export function useRewardBuild(initial: Partial<BuildSettings> = {}) {
         answerMaxTokens: current.answerMaxTokens,
         r2PriorTurns: current.r2PriorTurns,
         r3MaxTokens: current.r3MaxTokens,
-        modelId: current.modelId,
-        revision: current.revision,
-      }),
+        modelId,
+        revision,
+      }, setJob),
     )
-  }, [build])
+  }, [build, modelId, revision])
+
+  const canStop = build.state.status === 'running' && job?.status === 'running' && !stopRequested
+  const stop = useCallback(async () => {
+    if (!canStop || !job) return
+    setStopRequested(true)
+    setStopError(null)
+    try {
+      await cancelRewardBuild(job.id)
+    } catch (error) {
+      setStopRequested(false)
+      setStopError(describeError(error))
+    }
+  }, [canStop, job])
 
   const toggleReward = useCallback(
     (reward: RewardId) => {
@@ -227,8 +237,14 @@ export function useRewardBuild(initial: Partial<BuildSettings> = {}) {
     result: resultOf(build.state),
     reset: build.reset,
     run,
+    stop,
+    canStop,
+    stopError,
+    stopping: stopRequested || job?.status === 'cancelling',
+    saving: job?.status === 'saving',
     busy: build.state.status === 'running',
-    estimate: estimateCalls(settings),
+    progress: job?.attempted ?? {},
+    estimate: estimateCalls(settings, handle?.partitions.train),
   }
 }
 

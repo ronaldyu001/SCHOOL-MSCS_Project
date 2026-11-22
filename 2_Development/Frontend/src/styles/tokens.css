@@ -11,50 +11,56 @@
  *
  * Colour is split into two jobs so they never fight: `accent` is the single
  * interactive/brand hue, and the semantic trio (running/done/failed) is
- * reserved for pipeline state. State is always paired with an icon and a word,
+ * reserved for run state. State is always paired with an icon and a word,
  * never signalled by colour alone.
+ *
+ * The palette is deliberately warm. An earlier version used a teal accent on a
+ * near-black, blue-cast grey, which is the look of a terminal and read as a
+ * developer tool rather than something to think in. Neutrals now carry a warm
+ * cast, the dark theme is charcoal instead of black, and the accent is a clay
+ * that belongs to no console.
  */
 
 :root {
   color-scheme: light;
 
-  /* Neutrals — cool slate ink */
-  --canvas: #f6f7f8;
-  --canvas-grid: #dfe4e8;
+  /* Neutrals — warm stone */
+  --canvas: #faf8f5;
+  --canvas-grid: #e7e0d8;
   --raised: #ffffff;
-  --sunken: #f0f2f4;
-  --overlay: rgba(255, 255, 255, 0.86);
+  --sunken: #f3efea;
+  --overlay: rgba(255, 253, 250, 0.88);
 
-  --border-subtle: #e6e9ec;
-  --border: #d5dade;
-  --border-strong: #b6bfc6;
+  --border-subtle: #ece6df;
+  --border: #ddd5cc;
+  --border-strong: #bdb2a6;
 
-  --fg: #0c1114;
-  --fg-muted: #57636d;
-  --fg-faint: #8a949d;
+  --fg: #221f1c;
+  --fg-muted: #6b625a;
+  --fg-faint: #7a7068;
   --fg-on-accent: #ffffff;
 
   /* Accent — the one interactive hue */
-  --accent: #0f6b63;
-  --accent-hover: #0b544e;
-  --accent-fg: #0b544e;
-  --accent-soft: rgba(15, 107, 99, 0.09);
-  --accent-line: rgba(15, 107, 99, 0.28);
+  --accent: #a8552f;
+  --accent-hover: #8d4526;
+  --accent-fg: #8d4526;
+  --accent-soft: rgba(168, 85, 47, 0.09);
+  --accent-line: rgba(168, 85, 47, 0.28);
 
-  /* Pipeline state */
-  --running: #9c5d14;
-  --running-soft: rgba(156, 93, 20, 0.1);
-  --running-line: rgba(156, 93, 20, 0.3);
-  --done: #126b47;
-  --done-soft: rgba(18, 107, 71, 0.1);
-  --done-line: rgba(18, 107, 71, 0.28);
-  --failed: #ad2a21;
-  --failed-soft: rgba(173, 42, 33, 0.09);
-  --failed-line: rgba(173, 42, 33, 0.28);
+  /* State */
+  --running: #96650f;
+  --running-soft: rgba(150, 101, 15, 0.1);
+  --running-line: rgba(150, 101, 15, 0.3);
+  --done: #4a7340;
+  --done-soft: rgba(74, 115, 64, 0.1);
+  --done-line: rgba(74, 115, 64, 0.28);
+  --failed: #a93b2a;
+  --failed-soft: rgba(169, 59, 42, 0.09);
+  --failed-line: rgba(169, 59, 42, 0.28);
 
-  --ring: rgba(15, 107, 99, 0.45);
-  --shadow-raised: 0 1px 2px rgba(12, 17, 20, 0.05);
-  --shadow-overlay: 0 6px 24px -8px rgba(12, 17, 20, 0.16);
+  --ring: rgba(168, 85, 47, 0.45);
+  --shadow-raised: 0 1px 2px rgba(45, 38, 32, 0.06);
+  --shadow-overlay: 0 6px 24px -8px rgba(45, 38, 32, 0.18);
 
   /* Type */
   --sans:
@@ -111,38 +117,38 @@
   :root:not([data-theme='light']) {
     color-scheme: dark;
 
-    --canvas: #0a0d10;
-    --canvas-grid: #1b232a;
-    --raised: #12171c;
-    --sunken: #0d1216;
-    --overlay: rgba(18, 23, 28, 0.88);
+    --canvas: #1e1b19;
+    --canvas-grid: #322d28;
+    --raised: #272320;
+    --sunken: #1a1715;
+    --overlay: rgba(39, 35, 32, 0.88);
 
-    --border-subtle: #1c242b;
-    --border: #28323b;
-    --border-strong: #3a4753;
+    --border-subtle: #302b27;
+    --border: #3f3934;
+    --border-strong: #58504a;
 
-    --fg: #e9eef2;
-    --fg-muted: #97a4b0;
-    --fg-faint: #67747f;
-    --fg-on-accent: #05211f;
+    --fg: #f3eee8;
+    --fg-muted: #ada299;
+    --fg-faint: #938980;
+    --fg-on-accent: #1e1b19;
 
-    --accent: #4ecbbf;
-    --accent-hover: #6fdbd0;
-    --accent-fg: #6fdbd0;
-    --accent-soft: rgba(78, 203, 191, 0.12);
-    --accent-line: rgba(78, 203, 191, 0.32);
+    --accent: #d98b61;
+    --accent-hover: #e8a37c;
+    --accent-fg: #e8a37c;
+    --accent-soft: rgba(217, 139, 97, 0.13);
+    --accent-line: rgba(217, 139, 97, 0.32);
 
-    --running: #e2a74f;
-    --running-soft: rgba(226, 167, 79, 0.13);
-    --running-line: rgba(226, 167, 79, 0.32);
-    --done: #45d396;
-    --done-soft: rgba(69, 211, 150, 0.12);
-    --done-line: rgba(69, 211, 150, 0.3);
-    --failed: #f98b82;
-    --failed-soft: rgba(249, 139, 130, 0.12);
-    --failed-line: rgba(249, 139, 130, 0.3);
+    --running: #d6a55e;
+    --running-soft: rgba(214, 165, 94, 0.13);
+    --running-line: rgba(214, 165, 94, 0.32);
+    --done: #8aab77;
+    --done-soft: rgba(138, 171, 119, 0.13);
+    --done-line: rgba(138, 171, 119, 0.32);
+    --failed: #dd8578;
+    --failed-soft: rgba(221, 133, 120, 0.13);
+    --failed-line: rgba(221, 133, 120, 0.32);
 
-    --ring: rgba(78, 203, 191, 0.5);
+    --ring: rgba(217, 139, 97, 0.5);
     --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-overlay: 0 8px 28px -10px rgba(0, 0, 0, 0.7);
   }
@@ -151,38 +157,38 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --canvas: #0a0d10;
-  --canvas-grid: #1b232a;
-  --raised: #12171c;
-  --sunken: #0d1216;
-  --overlay: rgba(18, 23, 28, 0.88);
+  --canvas: #1e1b19;
+  --canvas-grid: #322d28;
+  --raised: #272320;
+  --sunken: #1a1715;
+  --overlay: rgba(39, 35, 32, 0.88);
 
-  --border-subtle: #1c242b;
-  --border: #28323b;
-  --border-strong: #3a4753;
+  --border-subtle: #302b27;
+  --border: #3f3934;
+  --border-strong: #58504a;
 
-  --fg: #e9eef2;
-  --fg-muted: #97a4b0;
-  --fg-faint: #67747f;
-  --fg-on-accent: #05211f;
+  --fg: #f3eee8;
+  --fg-muted: #ada299;
+  --fg-faint: #938980;
+  --fg-on-accent: #1e1b19;
 
-  --accent: #4ecbbf;
-  --accent-hover: #6fdbd0;
-  --accent-fg: #6fdbd0;
-  --accent-soft: rgba(78, 203, 191, 0.12);
-  --accent-line: rgba(78, 203, 191, 0.32);
+  --accent: #d98b61;
+  --accent-hover: #e8a37c;
+  --accent-fg: #e8a37c;
+  --accent-soft: rgba(217, 139, 97, 0.13);
+  --accent-line: rgba(217, 139, 97, 0.32);
 
-  --running: #e2a74f;
-  --running-soft: rgba(226, 167, 79, 0.13);
-  --running-line: rgba(226, 167, 79, 0.32);
-  --done: #45d396;
-  --done-soft: rgba(69, 211, 150, 0.12);
-  --done-line: rgba(69, 211, 150, 0.3);
-  --failed: #f98b82;
-  --failed-soft: rgba(249, 139, 130, 0.12);
-  --failed-line: rgba(249, 139, 130, 0.3);
+  --running: #d6a55e;
+  --running-soft: rgba(214, 165, 94, 0.13);
+  --running-line: rgba(214, 165, 94, 0.32);
+  --done: #8aab77;
+  --done-soft: rgba(138, 171, 119, 0.13);
+  --done-line: rgba(138, 171, 119, 0.32);
+  --failed: #dd8578;
+  --failed-soft: rgba(221, 133, 120, 0.13);
+  --failed-line: rgba(221, 133, 120, 0.32);
 
-  --ring: rgba(78, 203, 191, 0.5);
+  --ring: rgba(217, 139, 97, 0.5);
   --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-overlay: 0 8px 28px -10px rgba(0, 0, 0, 0.7);
 }

@@ -17,7 +17,6 @@
   font-size: var(--text-2xs);
   font-family: var(--mono);
   letter-spacing: 0.07em;
-  text-transform: uppercase;
   color: var(--fg-faint);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -33,7 +32,6 @@
   font-size: var(--text-2xs);
   font-weight: 560;
   letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--fg-faint);
   border-bottom: 1px solid var(--border-subtle);
 }

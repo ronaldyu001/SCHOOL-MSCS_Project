@@ -1,7 +1,7 @@
 import type { SVGProps } from 'react'
 
-/* A hand-picked set rather than an icon dependency: eleven glyphs, one stroke
- * weight, drawn on the same 24px grid so they align optically at any size. */
+/* A hand-picked set rather than an icon dependency: one stroke weight, drawn on
+ * the same 24px grid so the glyphs align optically at any size. */
 const PATHS = {
   dot: 'M12 12h.01',
   check: 'M4 12.5 9.5 18 20 6.5',
@@ -18,7 +18,6 @@ const PATHS = {
     'M20 5.5v5h-5M4 18.5v-5h5M19.3 14a7.5 7.5 0 0 1-12.6 3.2L4 13.5M4.7 10A7.5 7.5 0 0 1 17.3 6.8L20 10.5',
   sun: 'M12 5.5V3M12 21v-2.5M5.5 12H3M21 12h-2.5M7.4 7.4 5.6 5.6M18.4 18.4l-1.8-1.8M7.4 16.6l-1.8 1.8M18.4 5.6l-1.8 1.8M15.5 12a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z',
   moon: 'M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z',
-  monitor: 'M3.5 4.5h17v11h-17zM9 20h6M12 15.5V20',
 } as const
 
 export type IconName = keyof typeof PATHS

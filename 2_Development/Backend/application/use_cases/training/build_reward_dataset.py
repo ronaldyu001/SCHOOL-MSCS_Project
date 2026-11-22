@@ -1,5 +1,5 @@
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from itertools import islice, zip_longest
 from math import isfinite
@@ -24,6 +24,8 @@ class InputOutcome:
     skip_reason: str | None = None
     winning_score: float | None = None
     top_ties: int = 0
+    tied_score: float | None = None
+    kept_all_one_tie: bool = False
 
 
 @dataclass
@@ -39,6 +41,7 @@ class RewardDataset:
                 outcome.skip_reason for outcome in self.outcomes if outcome.skip_reason
             )),
             "tied_winners": sum(outcome.top_ties > 1 for outcome in self.outcomes),
+            "kept_all_one_ties": sum(outcome.kept_all_one_tie for outcome in self.outcomes),
         }
 
 
@@ -51,6 +54,7 @@ class RewardBuildSettings:
     top_k: int = 20
     token_budget: int = 512
     max_inputs_per_reward: int | None = None
+    keep_all_one_ties: bool = False
 
     def __post_init__(self) -> None:
         if self.candidates < 2:
@@ -70,14 +74,17 @@ class BuildRewardDataset:
         retrieval: RetrieveMemories,
         context: BuildContext,
         settings: RewardBuildSettings,
+        *, check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         self._rewriter = rewriter
         self._retrieval = retrieval
         self._context = context
         self._settings = settings
+        self._check_cancelled = check_cancelled
 
     def execute(
-        self, inputs: Mapping[str, Iterable[RewardInput | RewardSkip]]
+        self, inputs: Mapping[str, Iterable[RewardInput | RewardSkip]],
+        *, report_progress: Callable[[str, int], None] | None = None,
     ) -> dict[str, RewardDataset]:
         datasets = {reward: RewardDataset() for reward in inputs}
         limited = {
@@ -92,9 +99,14 @@ class BuildRewardDataset:
                     if item is not None
                 ]
                 self._score_group(group, datasets)
+                if report_progress is not None:
+                    for reward, _ in group:
+                        report_progress(reward, len(datasets[reward].outcomes))
         for reward, items in limited.items():
             for item in items:
                 self._score_group([(reward, item)], datasets)
+                if report_progress is not None:
+                    report_progress(reward, len(datasets[reward].outcomes))
         return datasets
 
     def _score_group(
@@ -102,6 +114,8 @@ class BuildRewardDataset:
         group: Sequence[tuple[str, RewardInput | RewardSkip]],
         datasets: dict[str, RewardDataset],
     ) -> None:
+        if self._check_cancelled is not None:
+            self._check_cancelled()
         # R0 and R1 can share work when they use the same question and retrieval scope.
         grouped: dict[
             tuple[str, str, str, frozenset[str] | None], list[tuple[str, RewardInput]]
@@ -129,7 +143,10 @@ class BuildRewardDataset:
             count=settings.candidates,
             temperature=settings.temperature,
             max_new_tokens=settings.rewrite_max_tokens,
+            check_cancelled=self._check_cancelled,
         )
+        if self._check_cancelled is not None:
+            self._check_cancelled()
         count = len(rewrites.queries)
         if count < 2:
             for reward, item in group:
@@ -152,11 +169,20 @@ class BuildRewardDataset:
                 dataset.outcomes.append(InputOutcome(item.input_id, count, error.reason))
                 continue
             winner = select_rewrite(scores)
+            tied_score = scores[0] if winner is None and len(scores) > 1 else None
+            kept_all_one_tie = (
+                reward == "r0" and settings.keep_all_one_ties and tied_score == 1.0
+            )
+            if kept_all_one_tie:
+                winner = (0, 1.0)
             if winner is None:
-                dataset.outcomes.append(InputOutcome(item.input_id, count, "all_scores_tied"))
+                dataset.outcomes.append(InputOutcome(
+                    item.input_id, count, "all_scores_tied", tied_score=tied_score,
+                ))
                 continue
             index, score = winner
             dataset.examples.append(TrainingExample(rewrites.prompt, rewrites.queries[index]))
             dataset.outcomes.append(InputOutcome(
-                item.input_id, count, winning_score=score, top_ties=scores.count(score)
+                item.input_id, count, winning_score=score, top_ties=scores.count(score),
+                tied_score=tied_score, kept_all_one_tie=kept_all_one_tie,
             ))

@@ -41,7 +41,9 @@ starts the backend in CPU mode.
 Rust and the platform's Tauri build prerequisites must be installed.
 The dev launcher stops and removes the containers it started when Tauri exits,
 including after an app crash. It keeps the Qdrant and model cache volumes.
-The backend image is built at each launch, and Compose picks up image changes.
+The launcher tries to rebuild the backend at each launch. If it cannot reach
+Docker Hub to check the base image, it uses the last local backend image when
+one is available. Backend source changes take effect after a successful build.
 If the backend or Qdrant was already running when Tauri opened, it stays up
 when the desktop closes.
 This hook is for development; packaged apps do not start Docker automatically.
@@ -50,11 +52,12 @@ This hook is for development; packaged apps do not start Docker automatically.
 
 | Route | What it drives | Backend routes |
 | --- | --- | --- |
-| `/` | Load LoCoMo, split by conversation, prepare the partitions, index into Qdrant | `POST /data/load`, `/data/{id}/splits`, `/data/{id}/prepare`, `/data/{id}/index` |
-| `/retrieval` | Ask a question, compare it against the rewriter's versions, and read an answer out of what came back | `POST /retrieval/search`, `POST /model/rewrite`, `POST /model/answer`, `GET /data/prepared/{id}/questions` |
-| `/rewards` | The four scorers, and a small probe of one of them | `GET /rewards`, `POST /training/reward-datasets` |
-| `/training` | Build training data for any subset of R0–R3 and download it in the command-line builder's file layout | `POST /training/reward-datasets`, `GET /data/prepared`, `GET /model/info` |
-| `/evaluation` | Not built. Renders its proposal scope; the backend has no evaluation use case yet | — |
+| `/setup` | Load LoCoMo, split by conversation, prepare the partitions, and index into Qdrant | `POST /data/load`, `/data/{id}/splits`, `/data/{id}/prepare`, `/data/{id}/index` |
+| `/training` | Build reward datasets from the indexed training split | `GET /rewards`, `POST /rewards/builds`, `GET /rewards/builds/{id}` |
+| `/fine-tuning` | Start LoRA training from a saved dataset and follow the run | `POST /training/runs`, `GET /training/runs` |
+| `/evaluation` | Planned evaluation scope, available after setup and a completed adapter | — |
+| `/search` | Experiment with query rewriting, retrieval, and answering | `POST /retrieval/search`, `POST /model/rewrite`, `POST /model/answer` |
+| `/artifacts` | View, download, rename, annotate, and delete saved datasets and runs | `/rewards/datasets`, `/training/runs` |
 
 The pipeline's state lives in the shell (`AppShell` calls `usePipeline`, passing it
 through the router's outlet context) rather than inside the pipeline page, because the
@@ -82,10 +85,8 @@ now:
   "Context size", not "token budget". Terms the project is actually about — the scorer
   names, recall — stay.
 
-Three things survived the cut because they are honest rather than decorative: `/training`
-says in one line that nothing trains a model yet, the scorers report what they threw out
-as well as what they kept, and `MetricBar` prints every value as text so no reading
-depends on a bar's width.
+The training data page reports which examples were kept or skipped. `MetricBar`
+prints each value as text as well as showing the bar.
 
 ## Startup gate
 
@@ -111,6 +112,12 @@ Vite. Vite forwards `/boot` to that feed. Plain `npm run dev`, or an unavailable
 feed, returns a 503 JSON response and the frontend falls back to API readiness.
 Under nginx, `/boot` falls through to `index.html`, so the frontend checks the
 content type before parsing.
+
+**Steps only ever accumulate.** Both feeds come and go on their own schedule: a
+readiness poll fails while the backend restarts, and the launcher's little server can
+miss a request. The list used to be rebuilt from whatever answered that second, so whole
+boxes vanished mid-boot. A step that stops reporting now keeps its last known state
+instead of disappearing.
 
 The gate **never times out on its own**: a first desktop build downloads PyTorch, and
 treating that as a failure would be wrong. Two things can end the wait early —
@@ -188,6 +195,13 @@ shadows:**
 
 The rule the pipeline page follows: **controls sit on raised surfaces, results sit on
 sunken ones.** That is what lets a reader tell an input from an output at a glance.
+
+**The palette is warm on purpose.** It used to be a teal accent on a near-black,
+blue-cast grey, which is the look of a terminal: it made a research console read as a
+developer tool. Neutrals now carry a warm cast, the dark theme is charcoal rather than
+black, and the accent is a clay that belongs to no console. Every text tier clears WCAG
+AA against its background in both themes — body 15.5:1 light and 14.9:1 dark, muted
+5.6/6.9, faint 4.6/5.0.
 
 **Colour has two jobs and they never mix.** `--accent` is the one interactive/brand hue.
 The semantic trio `--running` / `--done` / `--failed` is reserved for pipeline state.
