@@ -1,5 +1,21 @@
 from platform import machine, system
 
+from infrastructure.config import config
+
+
+def resolve_device(requested: str | None = None) -> str:
+    device = config.training_device if requested is None else requested
+    if device != "auto":
+        return "cuda" if device == "gpu" else device
+
+    import torch
+
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
 
 def describe_runtime(device: str, *, mixed_precision: str) -> dict:
     import torch

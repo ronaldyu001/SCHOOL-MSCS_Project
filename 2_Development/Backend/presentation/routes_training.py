@@ -7,6 +7,7 @@ from application.ports.models.llm import MAX_MODEL_ID_LENGTH, MODEL_ID_PATTERN
 from application.use_cases.training.train_rewrite_adapter import StartTrainingRun
 from application.use_cases.training.training_run import TrainingSettings
 from infrastructure.config import config
+from infrastructure.models.llm.runtime import resolve_device
 
 from .artifact_routes import ArtifactName, ArtifactNotes, artifact_errors, artifact_router
 from .resources import require_hub_model_id
@@ -41,14 +42,13 @@ class StartTrainingRequest(BaseModel):
 
 @router.post("/runs", status_code=202)
 def start_training(body: StartTrainingRequest, request: Request, response: Response) -> dict:
-    device = "cuda" if config.training_device == "gpu" else config.training_device
     with artifact_errors():
         record = StartTrainingRun(
             request.app.state.artifact_store, request.app.state.training_worker,
             default_checkpoint=(config.llm_model_id, config.llm_model_revision),
             validate_model_id=require_hub_model_id,
         ).execute(
-            str(body.dataset_id), model_id=body.model_id, revision=body.revision, device=device,
+            str(body.dataset_id), model_id=body.model_id, revision=body.revision, device=resolve_device(),
             settings=TrainingSettings(**body.settings.model_dump()),
             name=body.name, notes=body.notes,
         )

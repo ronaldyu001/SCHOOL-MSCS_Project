@@ -2,7 +2,6 @@ import argparse
 import json
 from dataclasses import asdict
 from hashlib import sha256
-from os import getenv
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -144,7 +143,7 @@ def main() -> None:
         "model_id": args.model_id,
         "model_revision": llm.resolved_revision or args.model_revision,
         "requested_model_revision": args.model_revision,
-        "device": getenv("LLM_DEVICE", "cpu"),
+        "device": llm.device,
         "embedding_device": config.embedding_device,
         "embedding_query_instruction": config.embedding_query_instruction,
         "reward_pipeline_version": REWARD_PIPELINE_VERSION,

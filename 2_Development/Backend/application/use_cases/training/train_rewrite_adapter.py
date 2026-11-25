@@ -39,8 +39,8 @@ class StartTrainingRun:
         name: str | None,
         notes: str,
     ) -> dict:
-        if device not in {"cpu", "cuda"}:
-            raise ValueError("Training device must be cpu, gpu, or cuda. Check LLM_DEVICE.")
+        if device not in {"cpu", "cuda", "mps"}:
+            raise ValueError("Training device must resolve to cpu, cuda, or mps. Check LLM_DEVICE.")
         with self.store.transaction():
             self.store.recover_interrupted()
             if self.store.compute_busy() or any(run["status"] in ACTIVE_STATUSES for run in (

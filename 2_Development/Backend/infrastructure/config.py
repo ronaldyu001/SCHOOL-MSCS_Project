@@ -18,7 +18,7 @@ class Config:
     llm_model_id: str = "Qwen/Qwen2.5-0.5B"
     llm_model_revision: str = "060db6499f32faf8b98477b0a26969ef7d8b9987"
     training_defaults: TrainingSettings = field(default_factory=TrainingSettings)
-    training_device: str = field(default_factory=lambda: os.environ.get("LLM_DEVICE", "cpu"))
+    training_device: str = field(default_factory=lambda: os.environ.get("LLM_DEVICE", "auto"))
     artifacts_dir: Path = field(
         default_factory=lambda: Path(os.environ.get("ARTIFACTS_DIR", "/artifacts"))
     )

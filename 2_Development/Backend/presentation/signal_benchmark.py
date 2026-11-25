@@ -16,6 +16,7 @@ from application.use_cases.training.training_run import ArtifactKind
 from infrastructure.config import config
 from infrastructure.evaluation.runtime import benchmark_index, load_benchmark, prepare_benchmark
 from infrastructure.evaluation.worker import BenchmarkEvaluator
+from infrastructure.models.llm.runtime import resolve_device
 from infrastructure.models.llm.transformers_llm_adapter import TransformersLLMAdapter
 from infrastructure.training.artifact_store import FileArtifactStore
 from infrastructure.training.worker import SubprocessTrainingWorker
@@ -28,9 +29,8 @@ def build_datasets(store: FileArtifactStore, seed: int, limit: int | None) -> di
     with store.transaction():
         store.recover_interrupted()
         lease = store.open_worker_lock()
-    device = "cuda" if config.training_device in {"cuda", "gpu"} else "cpu"
     with lease, benchmark_index(benchmark, partition, "train") as (embedder, memory):
-        model = TransformersLLMAdapter(benchmark.model_id, revision=benchmark.model_revision, device=device)
+        model = TransformersLLMAdapter(benchmark.model_id, revision=benchmark.model_revision)
         options = {key: benchmark.build[key] for key in ("answer_max_tokens", "r2_prior_turns", "r3_max_tokens")}
         datasets = BuildRewardDatasets(model, model, model, embedder, memory).execute(
             partition, REWARD_IDS, settings, **options,
@@ -43,6 +43,7 @@ def build_datasets(store: FileArtifactStore, seed: int, limit: int | None) -> di
             "train_conversation_ids": list(benchmark.split.train_conversation_ids),
             "categories": list(benchmark.categories), **benchmark.embedding,
             "model_id": benchmark.model_id, "model_revision": model.resolved_revision,
+            "device": model.device,
             "rewrite_prompt_version": benchmark.rewrite_prompt_version,
             "reward_pipeline_version": benchmark.reward_pipeline_version,
             "settings": {**asdict(settings), **options}, "collection": memory.collection_name,
@@ -67,7 +68,7 @@ def train_datasets(
     if set(datasets) != set(REWARD_IDS):
         raise ValueError("Supply one saved dataset ID for each of R0–R3.")
     benchmark = load_benchmark()
-    device = "cuda" if config.training_device in {"cuda", "gpu"} else "cpu"
+    device = resolve_device()
     start = StartTrainingRun(
         store, worker, default_checkpoint=(benchmark.model_id, benchmark.model_revision),
         # Training uses the pinned benchmark checkpoint, which is checked by prepare_benchmark.

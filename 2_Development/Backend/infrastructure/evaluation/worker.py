@@ -10,8 +10,7 @@ from application.use_cases.evaluation.evaluate_rewriters import EvaluateRewriter
 from application.use_cases.evaluation.run_evaluation import RunEvaluation
 from application.use_cases.retrieval import BuildContext, RetrieveMemories
 from application.use_cases.retrieval.search_memories import SearchMemories
-from infrastructure.config import config
-from infrastructure.models.llm.runtime import describe_runtime
+from infrastructure.models.llm.runtime import describe_runtime, resolve_device
 from infrastructure.models.llm.transformers_llm_adapter import TransformersLLMAdapter
 from infrastructure.training.artifact_store import FileArtifactStore
 
@@ -33,9 +32,7 @@ class BenchmarkEvaluator:
         limit = record["pilot_limit"]
         if limit is not None:
             questions = questions[:limit]
-        device = benchmark.hardware["training_device"] if record["mode"] == "official" else (
-            "cuda" if config.training_device in {"gpu", "cuda"} else "cpu"
-        )
+        device = benchmark.hardware["training_device"] if record["mode"] == "official" else resolve_device()
         runtime = describe_runtime(device, mixed_precision="none")
         runtime["evaluation_device"] = runtime.pop("training_device")
         tokenizer = AutoTokenizer.from_pretrained(

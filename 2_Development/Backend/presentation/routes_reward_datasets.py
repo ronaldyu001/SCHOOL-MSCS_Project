@@ -329,6 +329,7 @@ def _build(
             "model_id": model_id,
             "model_revision": checkpoint_revision,
             "requested_model_revision": revision,
+            "device": model.device,
             "embedding_model": config.embedding_model,
             "embedding_revision": config.embedding_revision,
             "embedding_device": config.embedding_device,

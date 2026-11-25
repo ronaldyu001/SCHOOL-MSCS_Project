@@ -1,6 +1,5 @@
 import logging
 from dataclasses import asdict
-from os import getenv
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -11,6 +10,7 @@ from application.use_cases.generation.answer_question import AnswerFromContext
 from application.use_cases.generation.measure_tokens import MeasureTokens
 from application.use_cases.generation.rewrite_query import REWRITE_PROMPT_VERSION
 from infrastructure.config import config
+from infrastructure.models.llm.runtime import resolve_device
 
 from .resources import language_model, resolve_checkpoint
 
@@ -144,7 +144,7 @@ def model_info(request: Request) -> ModelInfoResponse:
         loaded_model_id=model_id,
         loaded_revision=revision,
         context_window=context_window,
-        llm_device=getenv("LLM_DEVICE", "cpu"),
+        llm_device=resolve_device(),
         embedding_model=config.embedding_model,
         embedding_revision=config.embedding_revision,
         embedding_device=config.embedding_device,

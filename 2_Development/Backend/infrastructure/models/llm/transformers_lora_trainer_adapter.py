@@ -29,6 +29,8 @@ class TransformersLoRATrainerAdapter:
 
         if device == "cuda" and not torch.cuda.is_available():
             raise ValueError("CUDA is unavailable. Start the backend with GPU access or use CPU.")
+        if device == "mps" and not torch.backends.mps.is_available():
+            raise ValueError("MPS is unavailable. Run the backend natively on a supported Mac or use CPU.")
         use_bf16 = device == "cuda" and torch.cuda.is_bf16_supported()
         runtime = describe_runtime(device, mixed_precision="bfloat16" if use_bf16 else "none")
         if device == "cuda":
@@ -113,6 +115,8 @@ class TransformersLoRATrainerAdapter:
             ),
             callbacks=[ReportSteps()],
         )
+        if trainer.args.device.type != device:
+            raise ValueError(f"Trainer selected {trainer.args.device.type} instead of {device}. Check LLM_DEVICE.")
         result = trainer.train()
         if not isfinite(result.training_loss):
             raise ValueError("Training produced a non-finite loss. Lower the learning rate and retry.")

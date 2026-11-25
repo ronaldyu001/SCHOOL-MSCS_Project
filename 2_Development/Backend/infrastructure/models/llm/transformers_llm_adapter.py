@@ -1,10 +1,11 @@
 from contextlib import contextmanager
 from math import isfinite
-from os import getenv
 from pathlib import Path
 from threading import Lock
 
 from application.ports.models import ContextWindowExceeded
+
+from .runtime import resolve_device
 
 
 _sampling_lock = Lock()
@@ -25,15 +26,23 @@ def _sampling_rng(device, *, sample: bool, seed: int | None):
 
         import torch
 
-        if device.type not in ("cpu", "cuda"):
-            raise ValueError("Seeded sampling requires a CPU or CUDA model.")
+        if device.type not in ("cpu", "cuda", "mps"):
+            raise ValueError("Seeded sampling requires a CPU, CUDA, or MPS model.")
         cuda_devices = [device.index] if device.type == "cuda" else []
         with torch.random.fork_rng(devices=cuda_devices, device_type="cuda"):
             torch.default_generator.manual_seed(seed)
             if cuda_devices:
                 with torch.cuda.device(device):
                     torch.cuda.manual_seed(seed)
-            yield
+            if device.type == "mps":
+                state = torch.mps.get_rng_state()
+                try:
+                    torch.mps.manual_seed(seed)
+                    yield
+                finally:
+                    torch.mps.set_rng_state(state)
+            else:
+                yield
 
 
 class TransformersLLMAdapter:
@@ -48,10 +57,7 @@ class TransformersLLMAdapter:
         adapter_path: Path | None = None,
         dtype: str | None = None,
     ) -> None:
-        if device is None:
-            device = getenv("LLM_DEVICE", "cpu")
-        if device == "gpu":
-            device = "cuda"
+        device = resolve_device(device)
 
         if device.split(":", 1)[0] == "cuda":
             from torch.cuda import is_available
@@ -61,6 +67,11 @@ class TransformersLLMAdapter:
                     "CUDA is unavailable. Run the backend with NVIDIA GPU access "
                     "or select device='cpu'."
                 )
+        if device.split(":", 1)[0] == "mps":
+            from torch.backends.mps import is_available
+
+            if not is_available():
+                raise RuntimeError("MPS is unavailable. Run the backend natively on a supported Mac or use CPU.")
 
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -86,6 +97,10 @@ class TransformersLLMAdapter:
     @property
     def resolved_revision(self) -> str | None:
         return self._resolved_revision
+
+    @property
+    def device(self) -> str:
+        return self._model.device.type
 
     @property
     def context_window(self) -> int | None:

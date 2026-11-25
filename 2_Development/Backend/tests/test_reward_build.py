@@ -8,17 +8,53 @@ from time import monotonic, sleep
 
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+import torch
 from presentation import routes_reward_datasets as routes
 
 from application.use_cases.training.build_reward_dataset import RewardBuildSettings
 from application.use_cases.training.build_reward_datasets import BuildRewardDatasets
 from application.use_cases.training.manage_artifacts import SaveRewardDatasets
 from domain.entities import Conversation, DatasetPartition, QA, Session, Turn
+from infrastructure.models.llm.runtime import resolve_device
+from infrastructure.models.llm.transformers_llm_adapter import _sampling_rng
 from infrastructure.training.artifact_store import FileArtifactStore
 from presentation.routes_reward_datasets import RewardBuildJob, RewardDatasetRequest
 
 
 class RewardBuildTest(TestCase):
+    def test_device_selection_prefers_cuda_then_mps_then_cpu(self):
+        with patch.object(torch.cuda, 'is_available', return_value=True) as cuda, (
+            patch.object(torch.backends.mps, 'is_available', return_value=True)
+        ) as mps:
+            self.assertEqual(resolve_device('auto'), 'cuda')
+            mps.assert_not_called()
+            cuda.return_value = False
+            self.assertEqual(resolve_device('auto'), 'mps')
+            self.assertEqual(resolve_device('cpu'), 'cpu')
+            mps.return_value = False
+            self.assertEqual(resolve_device('auto'), 'cpu')
+            self.assertEqual(resolve_device('gpu'), 'cuda')
+            self.assertEqual(resolve_device('mps'), 'mps')
+
+    def test_mps_seed_applies_to_sampling_and_restores_rng_on_failure(self):
+        # Stand in for the MPS generator so this also runs in the Linux image.
+        generator = torch.Generator().manual_seed(91)
+        initial = generator.get_state()
+        cpu_initial = torch.random.get_rng_state()
+        with (
+            patch.object(torch.mps, 'get_rng_state', generator.get_state),
+            patch.object(torch.mps, 'manual_seed', generator.manual_seed),
+            patch.object(torch.mps, 'set_rng_state', generator.set_state),
+        ):
+            with _sampling_rng(torch.device('mps'), sample=True, seed=123):
+                first = torch.rand(4, generator=generator)
+            with self.assertRaisesRegex(RuntimeError, 'generation failed'):
+                with _sampling_rng(torch.device('mps'), sample=True, seed=123):
+                    torch.testing.assert_close(torch.rand(4, generator=generator), first)
+                    raise RuntimeError('generation failed')
+        self.assertTrue(torch.equal(generator.get_state(), initial))
+        self.assertTrue(torch.equal(torch.random.get_rng_state(), cpu_initial))
+
     def test_all_rewards_produce_reloadable_training_examples(self):
         turns = (Turn('t1', 'Alice', 'Alice moved to Denver.'),
                  Turn('t2', 'Bob', 'Bob likes Denver.'),
