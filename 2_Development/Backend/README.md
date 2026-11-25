@@ -63,23 +63,18 @@ device. The NVIDIA Compose override exposes CUDA and pins it with the legacy
 ### Use the Apple GPU on macOS
 
 Use native arm64 Python 3.12 or newer with a PyTorch build that supports MPS.
-Finish any running reward build before closing its desktop session or stopping
-the Docker backend. Reward jobs run inside the API process and restarting it
-interrupts the job. Then run these commands from `2_Development/Backend`:
+Create the launcher’s Python environment once from `2_Development/Backend`:
 
 ```sh
-docker compose -f ../Deployment/docker-compose.yaml up -d qdrant
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.in
-LLM_DEVICE=auto ARTIFACTS_DIR="$PWD/../.artifacts" \
-  BENCHMARK_DATASET="$PWD/../.data/locomo10.json" \
-  QDRANT_URL=http://127.0.0.1:6333 \
-  .venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Start `npm run dev` from `2_Development/Frontend` and open the Vite URL in a
-browser. If loading data in Setup, use `../.data/locomo10.json` as the dataset
-path. Expect `"llm_device":"mps"` in the response from
+After any current reward build finishes, close its desktop session or stop
+its backend. Then run `npm run tauri dev` from `2_Development/Frontend`.
+The launcher probes MPS, starts the native API, and uses the same Qdrant and
+workspace. The Setup path `/data/locomo10.json` maps to the project's `.data`
+directory. Expect `"llm_device":"mps"` in the response from
 `http://127.0.0.1:8000/model/info`. Official benchmark evaluation keeps its
 configured CUDA requirement.
 

@@ -1,14 +1,18 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 
 import * as boot from './boot-status.mjs'
 
 const compose = ['compose', '-f', '../Deployment/docker-compose.yaml']
 const gpuOverride = '../Deployment/docker-compose.gpu.yaml'
 const owner = `com.ms-project.desktop-session=${randomUUID()}`
+const backendDirectory = resolve('../Backend')
+const nativePython = join(backendDirectory, '.venv', 'bin', 'python')
+const backendUrl = 'http://127.0.0.1:8000'
 
 function launcherPids() {
   const ancestors = []
@@ -24,12 +28,12 @@ function launcherPids() {
   return ancestors
 }
 
-function start(command, args, output = 'inherit', onLine, env = process.env) {
+function start(command, args, output = 'inherit', onLine, env = process.env, cwd) {
   // 'tee' keeps Docker's output on the terminal and reports each line to the
   // loading screen; 'pipe' captures stdout for the caller as before.
   const piped = output === 'pipe' || output === 'tee'
   const stdio = piped ? ['ignore', 'pipe', 'pipe'] : ['ignore', output, output]
-  const child = spawn(command, args, { detached: true, stdio, env })
+  const child = spawn(command, args, { detached: true, stdio, env, cwd })
   let stdout = ''
   let stderr = ''
   if (piped) {
@@ -71,6 +75,8 @@ async function checked(job, message) {
 
 let dockerJob
 let viteJob
+let nativeJob
+let nativeProbe
 let stopping = false
 let mayHaveContainers = false
 let overrideDirectory
@@ -83,6 +89,8 @@ function requestStop(code = 0) {
   exitCode = code
   signalGroup(dockerJob, 'SIGINT')
   signalGroup(viteJob, 'SIGTERM')
+  signalGroup(nativeProbe, 'SIGTERM')
+  signalGroup(nativeJob, 'SIGTERM')
   stopRequested.resolve()
 }
 
@@ -95,6 +103,82 @@ async function startupCommand(args, output = 'inherit', onLine) {
   } finally {
     dockerJob = undefined
   }
+}
+
+async function backendHealthy() {
+  try {
+    return (await fetch(`${backendUrl}/health`, { signal: AbortSignal.timeout(1000) })).ok
+  } catch {
+    return false
+  }
+}
+
+async function supportsNativeMps() {
+  if (process.platform !== 'darwin') return false
+  if (!existsSync(nativePython)) {
+    console.log('Native Python environment missing. Set up Backend/.venv to enable MPS.')
+    return false
+  }
+  const probe = 'import torch, uvicorn; raise SystemExit(0 if torch.backends.mps.is_available() else 1)'
+  nativeProbe = start(nativePython, ['-c', probe], 'ignore')
+  try {
+    const { code } = await nativeProbe.done
+    if (code === 0) return true
+    if (!stopping) console.warn('Native MPS is unavailable. Check the backend Python environment.')
+  } catch (error) {
+    if (!stopping) console.warn(`Could not check native MPS: ${error.message}`)
+  } finally {
+    nativeProbe = undefined
+  }
+  return false
+}
+
+async function startComposeServices(files, services) {
+  if (!services.length) return
+  mayHaveContainers = true
+  overrideDirectory = mkdtempSync(join(tmpdir(), 'ms-project-desktop-'))
+  const override = join(overrideDirectory, 'compose.json')
+  writeFileSync(override, JSON.stringify({
+    services: Object.fromEntries(services.map((service) => [
+      service, { labels: [owner], restart: 'no' },
+    ])),
+  }))
+  const up = await startupCommand(
+    [...files, '-f', override, 'up', '-d', '--no-build', '--no-deps', '--wait', ...services],
+    'tee',
+    (line) => boot.progress('services', line),
+  )
+  if (up.code !== 0) throw new Error('Could not start the desktop services.')
+}
+
+async function startNativeBackend() {
+  nativeJob = start(
+    nativePython, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000'],
+    'inherit', undefined,
+    {
+      ...process.env,
+      LLM_DEVICE: 'mps',
+      QDRANT_URL: 'http://127.0.0.1:6333',
+      ARTIFACTS_DIR: resolve('../.artifacts'),
+      DATASET_DIR: resolve('../.data'),
+    },
+    backendDirectory,
+  )
+  nativeJob.done.then(({ code }) => {
+    if (!stopping) throw new Error(`Native backend exited with status ${code ?? 'unknown'}.`)
+  }).catch((error) => {
+    if (!stopping) {
+      boot.fail(error.message)
+      console.error(error.message)
+      requestStop(1)
+    }
+  })
+  const deadline = Date.now() + 120_000
+  while (!stopping && Date.now() < deadline) {
+    if (await backendHealthy()) return
+    await delay(400)
+  }
+  if (!stopping) throw new Error('The native MPS backend did not become healthy within two minutes.')
 }
 
 async function startServices() {
@@ -110,7 +194,36 @@ async function startServices() {
   )
   if (active.code !== 0) throw new Error('Could not check which Compose services are running.')
   const running = new Set(active.stdout.split(/\s+/))
-  const ownedServices = ['backend', 'qdrant'].filter((service) => !running.has(service))
+  const qdrantServices = running.has('qdrant') ? [] : ['qdrant']
+  if (running.has('backend') || await backendHealthy()) {
+    console.log('Reusing the running backend.')
+    boot.finish('build', 'Using the running backend.')
+    boot.finish('gpu', 'The running backend keeps its current device.')
+    boot.begin('services', 'Reusing the running backend.')
+    await startComposeServices(compose, qdrantServices)
+    if (!stopping) boot.ready()
+    return
+  }
+
+  if (process.platform === 'darwin') {
+    boot.begin('build', 'Checking for a native Apple GPU backend.')
+    if (await supportsNativeMps()) {
+      if (stopping) return
+      boot.finish('build', 'Native Python environment ready.')
+      boot.finish('gpu', 'MPS available. Using the Apple GPU.')
+      boot.begin('services', 'Starting Qdrant and the native backend.')
+      await startComposeServices(compose, qdrantServices)
+      if (stopping) return
+      console.log('Starting native backend with MPS.')
+      await startNativeBackend()
+      if (!stopping) {
+        boot.finish('services', 'Native backend and Qdrant are up.')
+        boot.ready()
+      }
+      return
+    }
+  }
+  if (stopping) return
 
   console.log('Building the desktop backend.')
   boot.begin('build', 'Building the backend image. A first build downloads PyTorch and can take a while.')
@@ -153,27 +266,9 @@ async function startServices() {
   if (!stopping) console.log(gpu.code === 0 ? 'Starting backend with CUDA.' : 'Starting backend on CPU.')
   boot.finish('gpu', gpu.code === 0 ? 'CUDA available; the backend will use the GPU.' : 'No CUDA; the backend will run on CPU.')
 
-  if (ownedServices.length) {
-    // Only label services that were inactive at launch. A running backend can
-    // receive the new image without becoming owned by the desktop.
-    overrideDirectory = mkdtempSync(join(tmpdir(), 'ms-project-desktop-'))
-    const override = join(overrideDirectory, 'compose.json')
-    writeFileSync(override, JSON.stringify({
-      services: Object.fromEntries(ownedServices.map((service) => [
-        service, { labels: [owner], restart: 'no' },
-      ])),
-    }))
-    files.push('-f', override)
-  }
-
-  const services = running.has('qdrant') ? ['backend'] : ['backend', 'qdrant']
+  const services = ['backend', ...qdrantServices]
   boot.begin('services', `Starting ${services.join(' and ')}, then waiting for the health check.`)
-  const up = await startupCommand(
-    [...files, 'up', '-d', '--no-build', '--no-deps', '--wait', ...services],
-    'tee',
-    (line) => boot.progress('services', line),
-  )
-  if (up.code !== 0) throw new Error('Could not start the desktop services.')
+  await startComposeServices(files, services)
   boot.finish('services', 'Containers are up and healthy.')
   // The window still confirms this against the API's own /ready before it
   // shows the app: Compose reporting healthy and the API being able to reach
@@ -237,6 +332,7 @@ clearInterval(watchLauncher)
 try {
   // Let Compose finish cancelling startup before looking for containers to remove.
   await startup
+  await nativeJob?.done.catch(() => undefined)
   await stopServices()
 } catch (error) {
   console.error(error.message)

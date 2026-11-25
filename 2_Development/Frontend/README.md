@@ -32,20 +32,20 @@ To point the dev server at a backend somewhere else, set `BACKEND_URL` before
 ## Desktop development
 
 With Docker Desktop running, use `npx tauri dev` (or `npm run tauri dev`).
-The Tauri dev hook runs `scripts/start-desktop.sh`. It starts desktop Vite on
-port 5174 while Docker Compose builds and starts the backend and Qdrant.
+The Tauri dev hook starts Vite on port 5174 and starts Qdrant with Docker Compose.
+On macOS, it prefers a native backend with MPS when
+`../Backend/.venv/bin/python` has MPS-capable PyTorch. See the backend README
+for the one-time Python environment setup. With the Docker backend, the
+launcher uses CUDA when the container can access it and otherwise uses CPU.
 The desktop can open while the API is still starting. Browser development uses
 port 5173.
-It adds the GPU Compose override if a test container can use CUDA. Otherwise it
-starts the backend in CPU mode.
 Rust and the platform's Tauri build prerequisites must be installed.
-The dev launcher stops and removes the containers it started when Tauri exits,
-including after an app crash. It keeps the Qdrant and model cache volumes.
-The launcher tries to rebuild the backend at each launch. If it cannot reach
-Docker Hub to check the base image, it uses the last local backend image when
-one is available. Backend source changes take effect after a successful build.
-If the backend or Qdrant was already running when Tauri opened, it stays up
-when the desktop closes.
+The launcher stops its native backend and removes the containers it started
+when Tauri exits, including after an app crash. It keeps the Qdrant and model
+cache volumes. If a backend or Qdrant was already running, the launcher
+reuses it and leaves it running. Restart your original session to switch devices.
+When starting a new Docker backend, the launcher tries to rebuild its image. If
+Docker Hub is unreachable, it uses the last local backend image when available.
 This hook is for development; packaged apps do not start Docker automatically.
 
 ## Sections

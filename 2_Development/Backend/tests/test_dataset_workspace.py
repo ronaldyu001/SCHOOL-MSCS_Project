@@ -1,5 +1,6 @@
 import json
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -74,6 +75,14 @@ class DatasetWorkspaceTest(TestCase):
 
     def index(self, client, dataset, prepared):
         return client.post(f'/data/{dataset}/index', json={'prepared_id': prepared, 'partition': 'train', 'batch_size': 1})
+
+    def test_native_data_directory_keeps_the_docker_dataset_path_usable(self):
+        with TestClient(self.app()) as client, patch.object(
+            routes, 'config', replace(routes.config, dataset_dir=self.root),
+        ):
+            loaded = client.post('/data/load', json={'path': '/data/locomo.json'})
+            self.assertEqual(loaded.status_code, 201, loaded.text)
+            self.assertEqual(loaded.json()['conversation_count'], 1)
 
     def test_restart_restores_questions_provenance_and_reuses_index(self):
         with TestClient(self.app()) as client:

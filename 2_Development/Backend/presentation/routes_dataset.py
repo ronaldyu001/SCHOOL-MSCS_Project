@@ -189,7 +189,10 @@ def list_questions(
 @workspace_write
 def load_dataset(body: LoadDatasetRequest, request: Request) -> dict:
     try:
-        source = LoCoMoAdapter(Path(body.path))
+        path = Path(body.path)
+        if path.is_relative_to("/data"):
+            path = config.dataset_dir / path.relative_to("/data")
+        source = LoCoMoAdapter(path)
         dataset = LoadDataset(source).execute()
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Dataset file not found.")

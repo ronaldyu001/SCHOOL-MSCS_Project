@@ -17,8 +17,8 @@ import { createServer } from 'node:http'
 /** The launcher's phases, in the order they run. */
 const STEPS = [
   { id: 'docker', label: 'Docker engine', pending: 'Waiting to check Docker' },
-  { id: 'build', label: 'Backend image', pending: 'Waiting to build' },
-  { id: 'gpu', label: 'Compute device', pending: 'Waiting to probe for CUDA' },
+  { id: 'build', label: 'Backend runtime', pending: 'Waiting to prepare the backend' },
+  { id: 'gpu', label: 'Compute device', pending: 'Waiting to check GPU support' },
   { id: 'services', label: 'Backend and Qdrant', pending: 'Waiting to start' },
 ]
 
