@@ -22,6 +22,12 @@ class Config:
     artifacts_dir: Path = field(
         default_factory=lambda: Path(os.environ.get("ARTIFACTS_DIR", "/artifacts"))
     )
+    benchmark_config: Path = field(default_factory=lambda: Path(os.environ.get(
+        "BENCHMARK_CONFIG", str(Path(__file__).resolve().parent / "benchmarks" / "locomo-signal-v1.json")
+    )))
+    benchmark_dataset: Path = field(
+        default_factory=lambda: Path(os.environ.get("BENCHMARK_DATASET", "/data/locomo10.json"))
+    )
     embedding_model: str = "BAAI/bge-base-en-v1.5"
     embedding_revision: str = "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a"
     embedding_device: str = "cpu"

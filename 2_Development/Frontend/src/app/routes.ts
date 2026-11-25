@@ -85,16 +85,10 @@ export const ROUTES: RouteDef[] = [
     label: 'Results',
     title: 'Results',
     icon: 'arrow',
-    status: 'planned',
+    status: 'built',
     summary: 'Compare every setup on the held-out test split.',
-    scope: [
-      'Budget curves for all six ladder steps on the held-out test split',
-      'Per-category breakdown: single-hop, multi-hop, temporal, open-domain',
-      'Repeat runs across seeds, so a small gap is not read as a real one',
-      'Label-free results expressed as a fraction of the supervised ceiling',
-    ],
+    scope: [],
     proposalRef: 'Evaluation',
-    requires: ['data', 'adapter'],
   },
   {
     path: '/search',

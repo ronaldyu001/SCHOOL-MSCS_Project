@@ -14,12 +14,17 @@ class SubprocessTrainingWorker:
         self._process: Popen | None = None
 
     def launch(self, run: TrainingRun) -> None:
+        self._launch(run.id, "infrastructure.training.worker")
+
+    def launch_evaluation(self, run_id: str) -> None:
+        self._launch(run_id, "infrastructure.evaluation.worker")
+
+    def _launch(self, run_id: str, module: str) -> None:
         with self._guard, self.store.open_worker_lock() as lease:
             descriptor = lease.fileno()
             # The child keeps this open, including if its API parent exits abruptly.
             process = Popen(
-                [sys.executable, "-m", "infrastructure.training.worker",
-                 str(self.store.root.resolve()), run.id, str(descriptor)],
+                [sys.executable, "-m", module, str(self.store.root.resolve()), run_id, str(descriptor)],
                 pass_fds=(descriptor,),
             )
             self._process = process

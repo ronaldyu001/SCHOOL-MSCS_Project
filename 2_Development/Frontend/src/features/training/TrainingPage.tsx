@@ -1,20 +1,25 @@
 import { useEffect, useMemo } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import {
   Button,
+  ButtonLink,
   Callout,
   DataTable,
+  OptionChips,
   Panel,
   PanelBody,
   PanelHeader,
+  PanelSection,
   Stat,
   StatGrid,
 } from '@/components/ui'
 import { useShell } from '@/app/shell-context'
+import { BenchmarkBuildControls } from '@/features/rewards/BenchmarkBuildControls'
 import { BuildControls } from '@/features/rewards/BuildControls'
 import { RewardCatalogue } from '@/features/rewards/RewardCatalogue'
 import { RewardOutcomes } from '@/features/rewards/RewardOutcomes'
 import { ModelPanel } from '@/features/harness/ModelPanel'
+import { benchmarkSetupKey, isPreparedBenchmark } from '@/features/pipeline/benchmark'
 import { count, percent } from '@/lib/format'
 import { downloadExamples, downloadManifest } from './download'
 import styles from './TrainingPage.module.css'
@@ -23,7 +28,34 @@ import styles from './TrainingPage.module.css'
 export function TrainingPage() {
   // The shell holds the build, so leaving the tab mid-run no longer throws the
   // result away when it lands.
-  const { health, model, rewardBuild: build, rewardCatalogue: catalogue } = useShell()
+  const {
+    health,
+    model,
+    pipeline,
+    evaluation,
+    artifacts,
+    rewardBuild: build,
+    rewardCatalogue: catalogue,
+  } = useShell()
+  const [params, setParams] = useSearchParams()
+  const benchmark = evaluation.benchmark
+  const indexed =
+    pipeline.state.index.status === 'done' ? pipeline.state.index.result : null
+  const setup = pipeline.benchmarkSetup
+  const preparedId = benchmark
+    ? setup &&
+      setup.key === benchmarkSetupKey(benchmark) &&
+      indexed?.prepared_id === setup.preparedId
+      ? setup.preparedId
+      : (build.prepared.handles.findLast((handle) =>
+          isPreparedBenchmark(handle, benchmark),
+        )?.prepared_id ?? null)
+    : null
+  const benchmarkMode =
+    params.get('mode') === 'benchmark' || (!params.has('mode') && preparedId !== null)
+  const busyCompute = Boolean(evaluation.active || artifacts.active)
+  const preparing = pipeline.busy || pipeline.runningAll
+  const blocked = busyCompute || preparing || health.state === 'offline'
 
   useEffect(() => {
     document.title = 'Training data · Memory Query Rewriter'
@@ -68,20 +100,75 @@ export function TrainingPage() {
         </Callout>
       ) : null}
 
-      <ModelPanel model={model} busy={build.busy} />
+      {!benchmarkMode ? <ModelPanel model={model} busy={build.busy} /> : null}
 
       <RewardCatalogue catalogue={catalogue} />
 
       <Panel>
         <PanelHeader
           title="Build it"
-          description="Tick the scorers you want. Each one produces its own file of rewrites."
+          description="Each scorer produces a saved dataset of rewrites."
         />
-        <BuildControls
-          build={build}
-          actionLabel="Build"
-          disabled={health.state === 'offline'}
-        />
+        <PanelSection>
+          <OptionChips
+            legend="Build settings"
+            options={[
+              { value: 'benchmark', label: 'Benchmark' },
+              { value: 'custom', label: 'Custom' },
+            ]}
+            selected={benchmarkMode ? 'benchmark' : 'custom'}
+            disabled={build.busy}
+            onPick={(mode) => setParams({ mode }, { replace: true })}
+          />
+        </PanelSection>
+        {benchmarkMode ? (
+          benchmark ? (
+            <BenchmarkBuildControls
+              benchmark={benchmark}
+              build={build}
+              preparedId={preparedId}
+              counts={
+                build.prepared.handles.find(
+                  (handle) => handle.prepared_id === preparedId,
+                )?.partitions.train
+              }
+              disabled={blocked}
+            />
+          ) : evaluation.error ? (
+            <PanelBody>
+              <Callout tone="error" title="Couldn’t load the benchmark profile">
+                <p>{evaluation.error}</p>
+                <Button
+                  size="sm"
+                  icon="refresh"
+                  onClick={() => void evaluation.refresh()}
+                >
+                  Try again
+                </Button>
+              </Callout>
+            </PanelBody>
+          ) : (
+            <PanelBody>
+              <p>Waiting for the backend benchmark profile.</p>
+            </PanelBody>
+          )
+        ) : (
+          <BuildControls build={build} actionLabel="Build" disabled={blocked} />
+        )}
+        {busyCompute ? (
+          <PanelBody>
+            <Callout tone="info">
+              Wait for the active training or evaluation run before building datasets.
+            </Callout>
+          </PanelBody>
+        ) : null}
+        {preparing ? (
+          <PanelBody>
+            <Callout tone="info">
+              Wait for Setup to finish before building datasets.
+            </Callout>
+          </PanelBody>
+        ) : null}
       </Panel>
 
       {state.status === 'running' ? (
@@ -113,7 +200,9 @@ export function TrainingPage() {
       {state.status === 'failed' ? (
         <Callout tone="error" title="Couldn't build it" role="alert">
           <p>{state.error}</p>
-          {state.error.toLowerCase().includes('index this prepared dataset') ? (
+          {/index this prepared dataset|prepared dataset not found/i.test(
+            state.error,
+          ) ? (
             <p className={styles.hint}>
               <Link to="/setup">Open Setup</Link> to index the training split.
             </p>
@@ -160,7 +249,7 @@ export function TrainingPage() {
               <DataTable
                 caption="What each scorer kept"
                 rowHeader="Scorer"
-                columns={['Tried', 'Kept', 'Rate', 'File']}
+                columns={['Tried', 'Kept', 'Rate', 'File', 'Training']}
                 rows={result.results.map((reward) => ({
                   key: reward.reward,
                   header: (
@@ -185,6 +274,18 @@ export function TrainingPage() {
                     >
                       Download
                     </Button>,
+                    reward.kept > 0 ? (
+                      <ButtonLink
+                        key="train"
+                        size="sm"
+                        variant="ghost"
+                        to={`/fine-tuning?dataset=${encodeURIComponent(reward.dataset_id)}`}
+                      >
+                        Fine-tune
+                      </ButtonLink>
+                    ) : (
+                      '—'
+                    ),
                   ],
                 }))}
               />

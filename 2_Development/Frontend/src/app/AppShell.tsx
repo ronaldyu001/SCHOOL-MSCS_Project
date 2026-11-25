@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { BrandMark, Icon, type IconName } from '@/components/ui'
 import { useArtifacts, type Artifacts } from '@/features/artifacts/useArtifacts'
+import { useEvaluation } from '@/features/evaluation/useEvaluation'
 import { useFineTune } from '@/features/fine-tuning/useFineTune'
 import { useModel } from '@/features/harness/useModel'
 import { usePipeline } from '@/features/pipeline/usePipeline'
@@ -41,6 +42,7 @@ function markFor(
   route: RouteDef,
   data: DataReadiness,
   artifacts: Artifacts,
+  evaluating: boolean,
 ): NavMark | null {
   const prerequisite = nextRequirement(route, data, artifacts)
   if (prerequisite) {
@@ -55,6 +57,9 @@ function markFor(
   }
   if (route.path === SETUP_ROUTE.path && data.progress.running) {
     return { icon: 'spinner', word: 'setting up the data', busy: true }
+  }
+  if (route.path === '/evaluation' && evaluating) {
+    return { icon: 'spinner', word: 'evaluation in progress', busy: true }
   }
   if (route.status === 'planned') {
     return { icon: 'dot', word: 'not built yet', planned: true }
@@ -89,6 +94,7 @@ export function AppShell() {
   const rewardCatalogue = useRewardCatalogue()
   const artifacts = useArtifacts(rewardBuild.result?.results[0]?.dataset_id, pathname)
   const fineTune = useFineTune(artifacts.refresh)
+  const evaluation = useEvaluation(pathname)
 
   const nextTheme = theme === 'dark' ? 'light' : 'dark'
 
@@ -109,33 +115,40 @@ export function AppShell() {
           </NavLink>
 
           <nav className={styles.nav} aria-label="Guided workflow">
-            {PRIMARY_ROUTES.map((route) => {
-              const mark = markFor(route, data, artifacts)
+            {PRIMARY_ROUTES.map((route, index) => {
+              const mark = markFor(route, data, artifacts, Boolean(evaluation.active))
               return (
-                <NavLink
-                  key={route.path}
-                  to={route.path}
-                  title={mark ? `${route.summary} — ${mark.word}` : route.summary}
-                  className={({ isActive }) =>
-                    `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`
-                  }
-                >
-                  {route.label}
-                  {mark ? (
-                    <>
-                      {mark.planned ? (
-                        <span className={styles.plannedDot} aria-hidden="true" />
-                      ) : (
-                        <Icon
-                          name={mark.icon}
-                          size={12}
-                          className={`${styles.markIcon} ${mark.busy ? styles.spin : ''}`}
-                        />
-                      )}
-                      <span className="sr-only">({mark.word})</span>
-                    </>
+                <Fragment key={route.path}>
+                  {/* The tabs are steps in an order, so they are joined like
+                      one: a chevron between each pair, decorative because the
+                      nav already reads as a list. */}
+                  {index > 0 ? (
+                    <Icon name="chevron" size={12} className={styles.flow} />
                   ) : null}
-                </NavLink>
+                  <NavLink
+                    to={route.path}
+                    title={mark ? `${route.summary} — ${mark.word}` : route.summary}
+                    className={({ isActive }) =>
+                      `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`
+                    }
+                  >
+                    {route.label}
+                    {mark ? (
+                      <>
+                        {mark.planned ? (
+                          <span className={styles.plannedDot} aria-hidden="true" />
+                        ) : (
+                          <Icon
+                            name={mark.icon}
+                            size={12}
+                            className={`${styles.markIcon} ${mark.busy ? styles.spin : ''}`}
+                          />
+                        )}
+                        <span className="sr-only">({mark.word})</span>
+                      </>
+                    ) : null}
+                  </NavLink>
+                </Fragment>
               )
             })}
           </nav>
@@ -189,6 +202,7 @@ export function AppShell() {
               rewardCatalogue,
               fineTune,
               artifacts,
+              evaluation,
             } satisfies ShellContext
           }
         />

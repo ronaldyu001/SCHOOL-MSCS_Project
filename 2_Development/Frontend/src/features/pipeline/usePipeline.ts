@@ -5,6 +5,8 @@ import {
   loadDataset,
   prepareDataset,
   type CreateSplitResponse,
+  type DatasetSplit,
+  type EvaluationBenchmark,
   type IndexDatasetResponse,
   type LoadDatasetResponse,
   type Partition,
@@ -12,6 +14,7 @@ import {
   type QACategory,
 } from '@/lib/api'
 import { describeError } from '@/lib/useAsyncRun'
+import { benchmarkSetupKey, matchesBenchmarkSplit } from './benchmark'
 
 export const PHASE_ORDER = ['load', 'split', 'prepare', 'index'] as const
 
@@ -89,17 +92,52 @@ function reducer(state: PipelineState, action: Action): PipelineState {
   }
 }
 
+/** The three partitions as whole percentages of the dataset, summing to 100. */
+export type SplitShares = { train: number; validation: number; test: number }
+
+export type SplitSizes = {
+  trainSize: number
+  validationSize: number
+  testSize: number
+}
+
 export type PipelineSettings = {
   path: string
   trainSize: number
   validationSize: number
   testSize: number
+  /**
+   * How to divide the conversations when the whole thing runs in one go.
+   *
+   * The three sizes above are exact conversation counts, and nobody can choose
+   * those before a load: they have to sum to a total the backend has not
+   * reported yet. Percentages can be chosen up front, so they are what the
+   * one-button run reads.
+   */
+  splitShares: SplitShares
   seed: number
   /** Empty means "no filter", which the API expects as null. */
   categories: QACategory[]
   partition: Partition
   batchSize: number
 }
+
+export const DEFAULT_SPLIT_SHARES: SplitShares = {
+  train: 70,
+  validation: 10,
+  test: 20,
+}
+
+/** The splits worth one tap, shared so the setup page and the split step cannot
+ *  drift into offering different ones. */
+export const SPLIT_PRESETS: { value: string; label: string; shares: SplitShares }[] = [
+  { value: '70-10-20', label: '70 / 10 / 20', shares: DEFAULT_SPLIT_SHARES },
+  {
+    value: '80-10-10',
+    label: '80 / 10 / 10',
+    shares: { train: 80, validation: 10, test: 10 },
+  },
+]
 
 /**
  * Defaults track the backend: `/data` is where docker-compose mounts the
@@ -111,6 +149,7 @@ const DEFAULT_SETTINGS: PipelineSettings = {
   trainSize: 0,
   validationSize: 0,
   testSize: 0,
+  splitShares: DEFAULT_SPLIT_SHARES,
   seed: 123,
   categories: [],
   partition: 'train',
@@ -118,19 +157,43 @@ const DEFAULT_SETTINGS: PipelineSettings = {
 }
 
 /**
- * A 70/10/20 starting point that always sums to `total`, since the backend
- * rejects any split that does not account for every conversation.
+ * Conversation counts for a set of shares, always summing to `total`, since the
+ * backend rejects any split that does not account for every conversation. What
+ * rounding leaves over lands in validation, the partition nothing is reported
+ * on, rather than in the held-out test set.
  */
-export function proposeSplit(total: number) {
-  const trainSize = Math.min(total, Math.max(0, Math.round(total * 0.7)))
-  const testSize = Math.min(total - trainSize, Math.max(0, Math.round(total * 0.2)))
+export function sizesFor(total: number, { train, test }: SplitShares): SplitSizes {
+  const trainSize = Math.min(total, Math.max(0, Math.round((total * train) / 100)))
+  const testSize = Math.min(
+    total - trainSize,
+    Math.max(0, Math.round((total * test) / 100)),
+  )
   return { trainSize, validationSize: total - trainSize - testSize, testSize }
+}
+
+/** The shares three counts describe, so sizes typed into the split step survive
+ *  a later one-button run instead of being quietly replaced. Validation takes
+ *  the remainder, so these always come to 100. */
+export function sharesOf({
+  trainSize,
+  validationSize,
+  testSize,
+}: SplitSizes): SplitShares {
+  const total = trainSize + validationSize + testSize
+  if (total <= 0) return DEFAULT_SPLIT_SHARES
+  const train = Math.round((trainSize / total) * 100)
+  const test = Math.round((testSize / total) * 100)
+  return { train, validation: 100 - train - test, test }
 }
 
 export function usePipeline() {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE)
   const [settings, setSettings] = useState<PipelineSettings>(DEFAULT_SETTINGS)
   const [runningAll, setRunningAll] = useState(false)
+  const [benchmarkSetup, setBenchmarkSetup] = useState<{
+    key: string
+    preparedId: string
+  } | null>(null)
   // Mirror of `settings` for the sequential run, which cannot observe the state
   // updates it has just queued.
   const settingsRef = useRef(settings)
@@ -189,8 +252,10 @@ export function usePipeline() {
   const runLoad = useCallback(
     async (path: string) => {
       const result = await track('load', () => loadDataset(path))
-      // A freshly loaded dataset gets a split proposal that actually sums.
-      if (result) write(proposeSplit(result.conversation_count))
+      // Now that the conversation count is known, the chosen proportions can
+      // become counts that actually sum to it.
+      if (result)
+        write(sizesFor(result.conversation_count, settingsRef.current.splitShares))
       return result
     },
     [track, write],
@@ -205,7 +270,17 @@ export function usePipeline() {
         testSize: number
         seed: number
       },
-    ) => track('split', () => createSplit(datasetId, sizes)),
+      expected?: DatasetSplit,
+    ) =>
+      track('split', async () => {
+        const split = await createSplit(datasetId, sizes)
+        if (expected && !matchesBenchmarkSplit(split, expected)) {
+          throw new Error(
+            'The conversation IDs do not match the frozen benchmark split.',
+          )
+        }
+        return split
+      }),
     [track],
   )
 
@@ -229,41 +304,61 @@ export function usePipeline() {
   )
 
   /** Load → split → prepare → index, stopping at the first failure. */
-  const runAll = useCallback(async () => {
-    setRunningAll(true)
-    try {
-      const current = settingsRef.current
-      const load = await runLoad(current.path)
-      if (!load) return
+  const runAll = useCallback(
+    async (benchmark?: EvaluationBenchmark) => {
+      setRunningAll(true)
+      try {
+        const current = settingsRef.current
+        const load = await runLoad(current.path)
+        if (!load) return
 
-      // runLoad has just reproposed the sizes, so use those rather than the
-      // form values, which were set for whatever was loaded before.
-      const sizes = proposeSplit(load.conversation_count)
-      const split = await runSplit(load.dataset_id, { ...sizes, seed: current.seed })
-      if (!split) return
+        const sizes = benchmark
+          ? {
+              trainSize: benchmark.split.train_conversation_ids.length,
+              validationSize: benchmark.split.validation_conversation_ids.length,
+              testSize: benchmark.split.test_conversation_ids.length,
+            }
+          : sizesFor(load.conversation_count, current.splitShares)
+        const seed = benchmark?.split_seed ?? current.seed
+        const categories = benchmark?.categories ?? current.categories
+        const partition = benchmark ? 'train' : current.partition
+        if (benchmark) {
+          write({ ...sizes, splitShares: sharesOf(sizes), seed, categories, partition })
+        }
+        const split = await runSplit(
+          load.dataset_id,
+          { ...sizes, seed },
+          benchmark?.split,
+        )
+        if (!split) return
 
-      const prepared = await runPrepare(
-        load.dataset_id,
-        split.split_id,
-        current.categories,
-      )
-      if (!prepared) return
+        const prepared = await runPrepare(load.dataset_id, split.split_id, categories)
+        if (!prepared) return
 
-      await runIndex(
-        load.dataset_id,
-        prepared.prepared_id,
-        current.partition,
-        current.batchSize,
-      )
-    } finally {
-      setRunningAll(false)
-    }
-  }, [runLoad, runSplit, runPrepare, runIndex])
+        const indexed = await runIndex(
+          load.dataset_id,
+          prepared.prepared_id,
+          partition,
+          current.batchSize,
+        )
+        if (indexed && benchmark) {
+          setBenchmarkSetup({
+            key: benchmarkSetupKey(benchmark),
+            preparedId: indexed.prepared_id,
+          })
+        }
+      } finally {
+        setRunningAll(false)
+      }
+    },
+    [runLoad, runSplit, runPrepare, runIndex, write],
+  )
 
   const reset = useCallback(() => {
     dispatch({ type: 'reset' })
     setSettings(DEFAULT_SETTINGS)
     settingsRef.current = DEFAULT_SETTINGS
+    setBenchmarkSetup(null)
   }, [])
 
   const busy = PHASE_ORDER.some((phase) => state[phase].status === 'running')
@@ -275,6 +370,7 @@ export function usePipeline() {
     patch: write,
     busy,
     runningAll,
+    benchmarkSetup,
     runLoad,
     runSplit,
     runPrepare,

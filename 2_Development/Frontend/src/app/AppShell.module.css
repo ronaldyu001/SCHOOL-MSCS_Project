@@ -88,12 +88,21 @@
   align-items: center;
   gap: var(--space-1);
   margin-left: auto;
+  /* Containing block for the links' absolutely positioned sr-only text, which
+     would otherwise escape this scroller and widen the page. */
+  position: relative;
   overflow-x: auto;
   scrollbar-width: none;
 }
 
 .nav::-webkit-scrollbar {
   display: none;
+}
+
+.flow {
+  flex: none;
+  color: var(--fg-faint);
+  transform: rotate(-90deg);
 }
 
 .navLink {

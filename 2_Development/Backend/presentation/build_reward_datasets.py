@@ -10,6 +10,7 @@ from application.use_cases.dataset import (
     CreateDatasetSplit, IndexDataset, LoadDataset, PrepareDataset,
 )
 from application.use_cases.generation.rewrite_query import REWRITE_PROMPT_VERSION
+from application.use_cases.dataset.index_dataset import MEMORY_FORMAT_VERSION
 from application.use_cases.training.build_reward_dataset import (
     RewardBuildSettings,
     RewardDataset,
@@ -105,7 +106,7 @@ def main() -> None:
         "embedding_model": config.embedding_model,
         "embedding_revision": config.embedding_revision,
         "embedding_max_length": config.embedding_max_length,
-        "memory_format_version": 1,
+        "memory_format_version": MEMORY_FORMAT_VERSION,
     }
     index_key = sha256(json.dumps(index_settings, sort_keys=True).encode()).hexdigest()
     collection = f"{config.qdrant_collection}_train_{index_key[:24]}"

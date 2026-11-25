@@ -13,8 +13,8 @@ export type WorkspaceStatus = 'checking' | 'empty' | 'ready'
  * Does this workspace have data to work with yet?
  *
  * Both halves live on the backend, so the answer survives a reload: the
- * collection holds the indexed memories, and app state holds the prepared
- * dataset that questions and training runs are drawn from. The app routes on
+ * collection holds the indexed memories, and the durable workspace holds the prepared
+ * dataset that questions and training runs are drawn from. Index availability is verified against Qdrant. The app routes on
  * this, which is why it is read once here and shared rather than fetched
  * again by every page that happens to care.
  */
@@ -53,10 +53,17 @@ export function useWorkspace() {
 
   return useMemo(() => {
     const indexed = Number(readiness?.facts.indexed_memories ?? 0)
-    const latest = handles.at(-1) ?? null
+    const latest =
+      handles.findLast((handle) =>
+        Object.values(handle.partitions).some((partition) => partition.indexed),
+      ) ??
+      handles.at(-1) ??
+      null
     const status: WorkspaceStatus = !checked
       ? 'checking'
-      : indexed > 0 && latest !== null
+      : indexed > 0 &&
+          latest !== null &&
+          Object.values(latest.partitions).some((partition) => partition.indexed)
         ? 'ready'
         : 'empty'
 

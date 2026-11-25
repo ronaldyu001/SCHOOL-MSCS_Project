@@ -1,0 +1,9 @@
+from typing import Protocol
+
+from .artifacts import ArtifactStore
+
+
+class EvaluationArtifacts(ArtifactStore, Protocol):
+    def adapter_digest(self, run_id: str) -> dict[str, str]: ...
+    def publish_evaluation(self, evaluation_id: str, summary: dict, rows: list[dict]) -> None: ...
+    def discard_evaluation(self, evaluation_id: str) -> None: ...

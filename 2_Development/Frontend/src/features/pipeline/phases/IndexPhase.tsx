@@ -12,7 +12,13 @@ import { bytes, count, ratio } from '@/lib/format'
 import { PhaseCard, PhaseControls, Readout } from '../PhaseCard'
 import { statusOf, type usePipeline } from '../usePipeline'
 
-export function IndexPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeline> }) {
+export function IndexPhase({
+  pipeline,
+  blocked = false,
+}: {
+  pipeline: ReturnType<typeof usePipeline>
+  blocked?: boolean
+}) {
   const { state, settings, update, busy } = pipeline
   const run = state.index
   const result = run.status === 'done' ? run.result : null
@@ -79,7 +85,7 @@ export function IndexPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
               variant="primary"
               icon="layers"
               busy={run.status === 'running'}
-              disabled={busy || !prepared || settings.batchSize < 1}
+              disabled={busy || blocked || !prepared || settings.batchSize < 1}
               onClick={() => {
                 if (!prepared) return
                 void pipeline.runIndex(

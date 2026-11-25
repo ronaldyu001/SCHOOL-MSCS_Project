@@ -4,7 +4,7 @@ from math import isfinite
 from typing import Literal, TypeAlias
 
 
-ArtifactKind: TypeAlias = Literal["datasets", "runs"]
+ArtifactKind: TypeAlias = Literal["datasets", "runs", "evaluations"]
 RunStatus: TypeAlias = Literal["queued", "running", "completed", "failed", "interrupted"]
 ACTIVE_STATUSES = frozenset({"queued", "running"})
 
@@ -70,3 +70,6 @@ class TrainingRun:
     progress: dict = field(default_factory=dict)
     metrics: dict = field(default_factory=dict)
     error: str | None = None
+    dataset_provenance: dict = field(default_factory=dict)
+    adapter_sha256: dict[str, str] = field(default_factory=dict)
+    runtime: dict = field(default_factory=dict)

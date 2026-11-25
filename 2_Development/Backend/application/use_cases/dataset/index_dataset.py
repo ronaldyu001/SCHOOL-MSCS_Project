@@ -6,8 +6,23 @@ from application.ports.memory_store import MemoryStorePort
 from domain.entities import Conversation, Memory, Session, Turn
 
 
+MEMORY_FORMAT_VERSION = 1
+
+
 def render_memory_turn(session: Session, turn: Turn) -> str:
     return f"[{session.timestamp.isoformat()}] {turn.speaker}: {turn.text}"
+
+
+def conversation_memories(conversation: Conversation):
+    for session in conversation.sessions:
+        for turn in session.turns:
+            yield Memory(
+                id=str(uuid5(NAMESPACE_URL,
+                    f"memory-rewriter/{conversation.id}/{session.id}/{turn.id}")),
+                conversation_id=conversation.id, session_id=session.id,
+                source_turn_ids=(turn.id,), timestamp=session.timestamp,
+                text=render_memory_turn(session, turn),
+            )
 
 
 class IndexDataset:
@@ -24,24 +39,12 @@ class IndexDataset:
         batch = []
         indexed_count = 0
         for conversation in conversations:
-            for session in conversation.sessions:
-                for turn in session.turns:
-                    memory = Memory(
-                        id=str(uuid5(
-                            NAMESPACE_URL,
-                            f"memory-rewriter/{conversation.id}/{session.id}/{turn.id}",
-                        )),
-                        conversation_id=conversation.id,
-                        session_id=session.id,
-                        source_turn_ids=(turn.id,),
-                        timestamp=session.timestamp,
-                        text=render_memory_turn(session, turn),
-                    )
-                    batch.append(memory)
-                    if len(batch) == batch_size:
-                        self._index_batch(batch)
-                        indexed_count += len(batch)
-                        batch = []
+            for memory in conversation_memories(conversation):
+                batch.append(memory)
+                if len(batch) == batch_size:
+                    self._index_batch(batch)
+                    indexed_count += len(batch)
+                    batch = []
 
         if batch:
             self._index_batch(batch)

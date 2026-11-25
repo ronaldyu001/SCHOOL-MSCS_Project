@@ -1,0 +1,39 @@
+{
+  "version": "locomo-signal-v1",
+  "corpus_sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+  "split": {
+    "train_conversation_ids": ["conv-49", "conv-48", "conv-44", "conv-50", "conv-41", "conv-42", "conv-47"],
+    "validation_conversation_ids": ["conv-30"],
+    "test_conversation_ids": ["conv-43", "conv-26"]
+  },
+  "split_seed": 123,
+  "seeds": [123, 456, 789],
+  "categories": ["single_hop", "multi_hop", "temporal", "open_domain"],
+  "model_id": "Qwen/Qwen2.5-0.5B",
+  "model_revision": "060db6499f32faf8b98477b0a26969ef7d8b9987",
+  "embedding": {
+    "embedding_model": "BAAI/bge-base-en-v1.5",
+    "embedding_revision": "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a",
+    "embedding_max_length": 512,
+    "embedding_query_instruction": "Represent this sentence for searching relevant passages: ",
+    "embedding_device": "cpu",
+    "memory_format_version": 1
+  },
+  "reward_pipeline_version": 2,
+  "rewrite_prompt_version": "1",
+  "top_k": 20,
+  "token_budgets": [128, 256, 512, 1024, 2048],
+  "build": {
+    "candidates": 8, "temperature": 0.7, "rewrite_max_tokens": 48, "top_k": 20,
+    "token_budget": 512, "max_inputs_per_reward": null, "keep_all_one_ties": false,
+    "answer_max_tokens": 64, "r2_prior_turns": 3, "r3_max_tokens": 64
+  },
+  "training": {
+    "epochs": 1, "learning_rate": 0.0002, "batch_size": 1,
+    "gradient_accumulation_steps": 4, "max_length": 512, "lora_rank": 8, "lora_alpha": 16
+  },
+  "hardware": {
+    "training_device": "cuda", "base_weight_dtype": "float32",
+    "mixed_precision": "bfloat16", "target_vram_gib": 16
+  }
+}

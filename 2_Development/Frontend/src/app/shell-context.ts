@@ -1,5 +1,6 @@
 import { useOutletContext } from 'react-router'
 import type { Artifacts } from '@/features/artifacts/useArtifacts'
+import type { useEvaluation } from '@/features/evaluation/useEvaluation'
 import type { useFineTune } from '@/features/fine-tuning/useFineTune'
 import type { useModel } from '@/features/harness/useModel'
 import type { usePipeline } from '@/features/pipeline/usePipeline'
@@ -70,6 +71,8 @@ export type ShellContext = ShellData & {
   fineTune: ReturnType<typeof useFineTune>
   /** Saved datasets and training runs, polled while a run is active. */
   artifacts: Artifacts
+  /** Benchmark configuration, evaluation form, and saved results. */
+  evaluation: ReturnType<typeof useEvaluation>
 }
 
 export function useShell() {

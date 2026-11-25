@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { ArtifactsPage } from '@/features/artifacts/ArtifactsPage'
+import { ResultsPage } from '@/features/evaluation/ResultsPage'
 import { FineTuningPage } from '@/features/fine-tuning/FineTuningPage'
 import { RetrievalPage } from '@/features/retrieval/RetrievalPage'
 import { SetupPage } from '@/features/setup/SetupPage'
@@ -21,6 +22,7 @@ const PAGES: Record<string, () => ReactNode> = {
   '/search': RetrievalPage,
   '/training': TrainingPage,
   '/fine-tuning': FineTuningPage,
+  '/evaluation': ResultsPage,
   '/artifacts': ArtifactsPage,
   '/setup': SetupPage,
 }

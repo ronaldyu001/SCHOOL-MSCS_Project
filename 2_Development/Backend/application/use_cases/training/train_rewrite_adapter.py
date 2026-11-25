@@ -43,8 +43,10 @@ class StartTrainingRun:
             raise ValueError("Training device must be cpu, gpu, or cuda. Check LLM_DEVICE.")
         with self.store.transaction():
             self.store.recover_interrupted()
-            if any(run["status"] in ACTIVE_STATUSES for run in self.store.list_artifacts("runs")):
-                raise ArtifactConflict("A training run is already active.")
+            if self.store.compute_busy() or any(run["status"] in ACTIVE_STATUSES for run in (
+                self.store.list_artifacts("runs") + self.store.list_artifacts("evaluations")
+            )):
+                raise ArtifactConflict("Training or evaluation is already active.")
             dataset = self.store.get("datasets", dataset_id)
             provenance = dataset.get("provenance")
             if not isinstance(provenance, dict) or provenance.get("partition") != "train":
@@ -57,6 +59,7 @@ class StartTrainingRun:
                 reward=dataset["reward"], model_id=selected_model, requested_revision=selected_revision,
                 device=device, settings=settings, name=name or f"{dataset['reward'].upper()} LoRA",
                 notes=notes,
+                dataset_provenance=provenance,
             )
             record = self.store.write("runs", run.id, asdict(run))
             try:
@@ -103,8 +106,11 @@ class TrainRewriteAdapter:
             self._update(run_id, status="running")
 
         def report_progress(progress: dict) -> None:
+            update = {"progress": {key: value for key, value in progress.items() if key != "runtime"}}
+            if "runtime" in progress:
+                update["runtime"] = progress["runtime"]
             with self.store.transaction():
-                self._update(run_id, progress=progress)
+                self._update(run_id, **update)
 
         try:
             examples = self.store.load_examples(record["dataset_id"], record["dataset_sha256"])
@@ -115,9 +121,9 @@ class TrainRewriteAdapter:
                     output=output, report_progress=report_progress,
                 )
                 with self.store.transaction():
-                    self.store.publish_adapter(run_id, output)
+                    hashes = self.store.publish_adapter(run_id, output)
                     self._update(run_id, status="completed", model_revision=revision,
-                                 adapter_path="adapter", metrics=metrics)
+                                 adapter_path="adapter", adapter_sha256=hashes, metrics=metrics)
         except Exception as error:
             logger.exception("Training run %s failed", run_id)
             detail = str(error) if isinstance(error, ValueError) else (

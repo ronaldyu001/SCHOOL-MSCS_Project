@@ -123,6 +123,9 @@ export function RunProgress({ run }: { run: TrainingRun }) {
             <ButtonLink to="/artifacts" variant="ghost" icon="layers">
               All artifacts
             </ButtonLink>
+            <ButtonLink to="/evaluation" variant="ghost" icon="arrow">
+              Open Results
+            </ButtonLink>
           </p>
         ) : null}
       </PanelBody>

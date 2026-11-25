@@ -15,6 +15,7 @@ export type DataReadiness = {
   /** Where that run has got to, whichever kind it is. */
   progress: SetupProgress
   indexedMemories: number
+  prepared: boolean
 }
 
 /**
@@ -51,5 +52,6 @@ export function readDataReadiness(
     rebuilding: usable && progress.running,
     progress,
     indexedMemories: workspace.indexedMemories,
+    prepared: workspace.handles.length > 0 || pipeline.prepare.status === 'done',
   }
 }

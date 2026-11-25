@@ -45,6 +45,7 @@ class SearchMemories:
         token_budgets: Sequence[int],
         expected_turn_ids: Sequence[str] = (),
         eligible_turn_ids: frozenset[str] | None = None,
+        select: bool = True,
     ) -> SearchResult:
         budgets = sorted(set(token_budgets))
         if not budgets:
@@ -69,7 +70,7 @@ class SearchMemories:
             results.append(QueryResult(query, matches, first_expected, tuple(packed_results)))
 
         selection = None
-        if expected:
+        if select and expected:
             selection = SelectRewrite().execute(
                 [result.budgets[-1].evidence_recall or 0.0 for result in results]
             )

@@ -3,7 +3,7 @@
  *
  * Every response type here mirrors a return value in Backend/presentation:
  * routes_dataset, routes_model, routes_retrieval, routes_rewards,
- * routes_reward_datasets and routes_system. Keep them in step: the insight panels
+ * routes_reward_datasets, routes_training, routes_evaluation and routes_system. Keep them in step: the insight panels
  * report these fields verbatim, so a drifted type shows up as a blank metric
  * rather than a crash, which is easy to miss.
  */
@@ -32,13 +32,16 @@ export type LoadDatasetResponse = {
   conversation_ids: string[]
 }
 
-export type CreateSplitResponse = {
-  dataset_id: string
-  split_id: string
-  seed: number
+export type DatasetSplit = {
   train_conversation_ids: string[]
   validation_conversation_ids: string[]
   test_conversation_ids: string[]
+}
+
+export type CreateSplitResponse = DatasetSplit & {
+  dataset_id: string
+  split_id: string
+  seed: number
 }
 
 export type PartitionCounts = {
@@ -139,9 +142,17 @@ async function request<T>(
     if (timer !== undefined) clearTimeout(timer)
   }
 
+  if (response.status === 204) return undefined as T
+
   const body: unknown = await response.json().catch(() => null)
   if (!response.ok) {
     throw new ApiError(readDetail(body, response.status), response.status)
+  }
+  if (body === null) {
+    throw new ApiError(
+      `The backend returned an empty or invalid JSON response for ${path}. Check the API connection and backend logs.`,
+      502,
+    )
   }
   return body as T
 }
@@ -236,19 +247,20 @@ export function getSystemMemory() {
 
 export type PreparedPartition = PartitionCounts & {
   conversation_ids: string[]
+  indexed?: boolean
   turn_count?: number
 }
 
 export type PreparedHandle = {
   prepared_id: string
   dataset_id: string | null
+  provenance?: DatasetProvenance
   partitions: Record<Partition, PreparedPartition>
 }
 
 /**
- * Prepared ids still live in backend app state. Browser state does not survive
- * a reload but this does, so the harness pages offer what the backend has
- * rather than making the pipeline run again.
+ * Prepared handles and provenance are restored from the durable backend
+ * workspace. Each partition reports whether its Qdrant index is verified.
  */
 export function listPrepared() {
   return request<PreparedHandle[]>(
@@ -583,7 +595,7 @@ export type RewardBuildInput = Checkpoint & {
 
 export type RewardBuildProgress = Partial<Record<RewardId, number>>
 
-type RewardBuildStatus = {
+export type RewardBuildStatus = {
   id: string
   attempted: RewardBuildProgress
 } & (
@@ -593,6 +605,27 @@ type RewardBuildStatus = {
 
 export type RewardBuildUpdate = Pick<RewardBuildStatus, 'id' | 'status' | 'attempted'>
 
+function validateRewardBuildStatus(job: RewardBuildStatus): RewardBuildStatus {
+  if (
+    !job ||
+    typeof job !== 'object' ||
+    typeof job.id !== 'string' ||
+    !job.id ||
+    !['running', 'cancelling', 'cancelled', 'saving', 'completed'].includes(
+      job.status,
+    ) ||
+    !job.attempted ||
+    typeof job.attempted !== 'object' ||
+    (job.status === 'completed' && (!job.result || !Array.isArray(job.result.results)))
+  ) {
+    throw new ApiError(
+      'The backend returned an invalid dataset build status. Check that the frontend and backend are running the same version.',
+      502,
+    )
+  }
+  return job
+}
+
 export function cancelRewardBuild(id: string) {
   return request<RewardBuildStatus>(
     `/rewards/builds/${encodeURIComponent(id)}/cancel`,
@@ -601,44 +634,124 @@ export function cancelRewardBuild(id: string) {
   )
 }
 
-export async function buildRewardDatasets(
-  input: RewardBuildInput,
-  onProgress: (progress: RewardBuildUpdate) => void,
-) {
-  let job = await postJson<RewardBuildStatus>(
-    '/rewards/builds',
-    {
-      ...checkpoint(input),
-      prepared_id: input.preparedId,
-      rewards: input.rewards,
-      max_inputs_per_reward: input.maxInputsPerReward,
-      keep_all_one_ties: input.keepAllOneTies,
-      seed: input.seed,
-      candidates: input.candidates,
-      temperature: input.temperature,
-      rewrite_max_tokens: input.rewriteMaxTokens,
-      top_k: input.topK,
-      token_budget: input.tokenBudget,
-      answer_max_tokens: input.answerMaxTokens,
-      r2_prior_turns: input.r2PriorTurns,
-      r3_max_tokens: input.r3MaxTokens,
-    },
-    { timeoutMs: 10_000 },
-  )
-  while (true) {
-    const { id, status, attempted } = job
-    onProgress({ id, status, attempted })
-    if (status === 'completed' || status === 'cancelled') return job.result
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    job = await request<RewardBuildStatus>(
-      `/rewards/builds/${job.id}`,
-      { method: 'GET' },
-      { timeoutMs: 15_000 },
-    )
+const REWARD_JOB_KEY = 'memory-rewriter.reward-build'
+
+function rememberRewardBuild(id: string | null) {
+  try {
+    if (id) localStorage.setItem(REWARD_JOB_KEY, id)
+    else localStorage.removeItem(REWARD_JOB_KEY)
+  } catch {
+    /* Storage may be unavailable; server discovery still works. */
   }
 }
 
-export type ArtifactKind = 'datasets' | 'runs'
+export async function findRewardBuild(): Promise<RewardBuildStatus | null> {
+  let remembered: string | null = null
+  try {
+    remembered = localStorage.getItem(REWARD_JOB_KEY)
+  } catch {
+    /* optional */
+  }
+  if (remembered) {
+    try {
+      return validateRewardBuildStatus(
+        await request<RewardBuildStatus>(
+          `/rewards/builds/${encodeURIComponent(remembered)}`,
+          { method: 'GET' },
+          { timeoutMs: 15_000 },
+        ),
+      )
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 503) rememberRewardBuild(null)
+      if (!(error instanceof ApiError) || error.status !== 404) throw error
+      rememberRewardBuild(null)
+    }
+  }
+  const response = await request<{ job: RewardBuildStatus | null }>(
+    '/rewards/builds',
+    { method: 'GET' },
+    { timeoutMs: 15_000 },
+  )
+  if (response.job == null) return null
+  const job = validateRewardBuildStatus(response.job)
+  rememberRewardBuild(job.id)
+  return job
+}
+
+export async function watchRewardBuild(
+  initial: RewardBuildStatus,
+  onProgress: (progress: RewardBuildUpdate) => void,
+  signal?: AbortSignal,
+) {
+  let job = validateRewardBuildStatus(initial)
+  rememberRewardBuild(job.id)
+  while (!signal?.aborted) {
+    const { id, status, attempted } = job
+    onProgress({ id, status, attempted })
+    if (status === 'completed' || status === 'cancelled') {
+      rememberRewardBuild(null)
+      return job.result
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    if (signal?.aborted) break
+    try {
+      job = validateRewardBuildStatus(
+        await request<RewardBuildStatus>(
+          `/rewards/builds/${encodeURIComponent(id)}`,
+          { method: 'GET' },
+          { timeoutMs: 15_000 },
+        ),
+      )
+    } catch (error) {
+      // Network/proxy outages do not end the server job. Keep following it.
+      if (error instanceof ApiError && [0, 502, 504].includes(error.status)) continue
+      if (error instanceof ApiError && [404, 503].includes(error.status))
+        rememberRewardBuild(null)
+      throw error
+    }
+  }
+  return null
+}
+
+export async function buildRewardDatasets(
+  input: RewardBuildInput,
+  onProgress: (progress: RewardBuildUpdate) => void,
+  signal?: AbortSignal,
+) {
+  let job: RewardBuildStatus
+  try {
+    job = await postJson<RewardBuildStatus>(
+      '/rewards/builds',
+      {
+        ...checkpoint(input),
+        prepared_id: input.preparedId,
+        rewards: input.rewards,
+        max_inputs_per_reward: input.maxInputsPerReward,
+        keep_all_one_ties: input.keepAllOneTies,
+        seed: input.seed,
+        candidates: input.candidates,
+        temperature: input.temperature,
+        rewrite_max_tokens: input.rewriteMaxTokens,
+        top_k: input.topK,
+        token_budget: input.tokenBudget,
+        answer_max_tokens: input.answerMaxTokens,
+        r2_prior_turns: input.r2PriorTurns,
+        r3_max_tokens: input.r3MaxTokens,
+      },
+      { timeoutMs: 10_000 },
+    )
+  } catch (error) {
+    // A conflict or lost POST response may mean a job already exists.
+    if (error instanceof ApiError && [0, 409, 502, 504].includes(error.status)) {
+      const existing = await findRewardBuild()
+      if (existing) return watchRewardBuild(existing, onProgress, signal)
+    }
+    throw error
+  }
+  return watchRewardBuild(job, onProgress, signal)
+}
+
+export type ArtifactKind = 'datasets' | 'runs' | 'evaluations'
 export type ArtifactMetadata = { name: string; notes: string }
 
 type SavedArtifact = ArtifactMetadata & {
@@ -648,17 +761,60 @@ type SavedArtifact = ArtifactMetadata & {
   dataset_sha256: string
 }
 
+type BenchmarkEmbedding = {
+  embedding_model: string
+  embedding_revision: string
+  embedding_max_length: number
+  embedding_query_instruction: string
+  embedding_device: string
+  memory_format_version: number
+}
+
+export type DatasetProvenance = Partial<BenchmarkEmbedding> & {
+  partition?: Partition
+  corpus_sha256?: string | null
+  split?: DatasetSplit
+  split_seed?: number
+  categories?: QACategory[] | null
+  model_id?: string
+  model_revision?: string | null
+  prepared_id?: string
+  train_conversation_ids?: string[]
+  settings?: Partial<RewardBuildSettings>
+  reward_pipeline_version?: number
+  rewrite_prompt_version?: string
+}
+
 export type SavedRewardDataset = SavedArtifact & {
   build_id: string
   row_count: number
   summary: Pick<RewardResult, 'attempted' | 'skipped' | 'kept_all_one_ties'>
-  provenance: {
-    model_id?: string
-    model_revision?: string | null
-    prepared_id?: string
-    train_conversation_ids?: string[]
-    settings?: Partial<RewardBuildSettings>
-  }
+  provenance: DatasetProvenance
+}
+
+type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted'
+
+type ModelRuntime = {
+  platform?: string
+  architecture?: string
+  torch_version?: string
+  base_weight_dtype?: string
+  mixed_precision?: string
+  gpu_name?: string
+  gpu_total_memory_bytes?: number
+}
+
+export type TrainingRuntime = ModelRuntime & { training_device?: string }
+
+export type TrainingRunSettings = {
+  seed: number
+  epochs: number
+  learning_rate: number
+  batch_size: number
+  gradient_accumulation_steps: number
+  max_length: number
+  lora_rank: number
+  lora_alpha: number
 }
 
 export type TrainingRun = SavedArtifact & {
@@ -666,7 +822,11 @@ export type TrainingRun = SavedArtifact & {
   model_id: string
   model_revision: string | null
   requested_revision: string | null
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'interrupted'
+  status: RunStatus
+  settings: TrainingRunSettings
+  dataset_provenance?: DatasetProvenance
+  adapter_sha256?: Record<string, string>
+  runtime?: TrainingRuntime
   progress: { phase?: string; step?: number; total_steps?: number; loss?: number }
   metrics: Record<string, number>
   error: string | null
@@ -675,6 +835,7 @@ export type TrainingRun = SavedArtifact & {
 const artifactPaths: Record<ArtifactKind, string> = {
   datasets: '/rewards/datasets',
   runs: '/training/runs',
+  evaluations: '/evaluation/runs',
 }
 
 function artifactPath(kind: ArtifactKind, id: string) {
@@ -776,7 +937,7 @@ export function updateArtifact(
   id: string,
   metadata: ArtifactMetadata,
 ) {
-  return request<SavedRewardDataset | TrainingRun>(
+  return request<SavedRewardDataset | TrainingRun | EvaluationRun>(
     artifactPath(kind, id),
     {
       method: 'PATCH',
@@ -797,6 +958,178 @@ export function deleteArtifact(kind: ArtifactKind, id: string) {
 
 export function artifactDownloadUrl(kind: ArtifactKind, id: string) {
   return `${BASE}${artifactPath(kind, id)}/download`
+}
+
+/* ------------------------------------------------------------------ *
+ * Held-out signal evaluation
+ * ------------------------------------------------------------------ */
+
+export type EvaluationMode = 'pilot' | 'official'
+export type EvaluationCategory = QACategory | 'all'
+export type EvaluationVariant =
+  'raw' | 'prompted' | RewardId | 'gold_query' | 'best_of_three'
+
+export type EvaluationBenchmark = {
+  version: string
+  corpus_sha256: string
+  split: DatasetSplit
+  split_seed: number
+  seeds: number[]
+  categories: QACategory[]
+  model_id: string
+  model_revision: string
+  embedding: BenchmarkEmbedding
+  reward_pipeline_version: number
+  rewrite_prompt_version: string
+  top_k: number
+  token_budgets: number[]
+  build: Omit<RewardBuildSettings, 'seed' | 'keep_all_one_ties'> & {
+    keep_all_one_ties: boolean
+  }
+  training: Omit<TrainingRunSettings, 'seed'>
+  hardware: {
+    training_device: string
+    base_weight_dtype: string
+    mixed_precision: string
+    target_vram_gib: number
+  }
+}
+
+type EvaluationMetrics = {
+  mean_recall: number
+  mean_tokens_used: number
+  mean_first_hit_rank: number | null
+  miss_rate: number
+  blank_rewrites: number
+  delta_vs_raw: number
+  delta_vs_prompted: number
+  recall_vs_r0?: number | null
+  r0_gain_recovered?: number | null
+}
+
+type EvaluationScoreGroup = EvaluationMetrics & {
+  variant: EvaluationVariant
+  category: EvaluationCategory
+  budget: number
+}
+
+export type EvaluationSeedResult = EvaluationScoreGroup & {
+  seed: number
+  questions: number
+}
+
+export type EvaluationCurve = EvaluationScoreGroup & {
+  questions_per_seed: number
+  seeds: number
+} & {
+  [Metric in keyof EvaluationMetrics as `${Metric}_seed_std`]: number | null
+} & {
+  [Metric in keyof EvaluationMetrics as `${Metric}_seed_count`]: number
+}
+
+export type EvaluationSummary = {
+  excluded_questions: Partial<Record<QACategory, Record<string, number>>>
+  per_seed: EvaluationSeedResult[]
+  curves: EvaluationCurve[]
+  failure_overlap: {
+    seed: number
+    category: EvaluationCategory
+    budget: number
+    zero_recall: Record<string, number>
+  }[]
+  rewrite_similarity: {
+    seed: number
+    category: EvaluationCategory
+    variants: [Exclude<RewardId, 'r0'>, Exclude<RewardId, 'r0'>]
+    questions: number
+    exact_match_rate: number
+    mean_token_jaccard: number
+  }[]
+}
+
+type EvaluationAdapterSource = {
+  run_id: string
+  dataset_id: string
+  dataset_sha256: string
+  adapter_sha256: Record<string, string>
+  model_id: string
+  model_revision: string
+  training_settings: TrainingRunSettings
+  training_runtime: TrainingRuntime
+  dataset_provenance: DatasetProvenance
+}
+
+export type EvaluationRun = ArtifactMetadata & {
+  id: string
+  status: RunStatus
+  created_at: string
+  updated_at: string
+  error: string | null
+  mode: EvaluationMode
+  partition: 'validation' | 'test'
+  pilot_limit: number | null
+  benchmark: EvaluationBenchmark
+  adapters: Partial<Record<number, Record<RewardId, EvaluationAdapterSource>>>
+  progress: {
+    phase?: 'preparing' | 'indexing' | 'scoring' | 'completed'
+    partition?: 'validation' | 'test'
+    variant?: EvaluationVariant
+    seeds?: number[]
+    completed?: number
+    total?: number
+  }
+  summary?: EvaluationSummary
+  runtime?: ModelRuntime & { evaluation_device?: string; collection?: string }
+}
+
+export type EvaluationAdapterSelection = Partial<
+  Record<number, Record<RewardId, string>>
+>
+
+export type StartEvaluationInput = {
+  adapters: EvaluationAdapterSelection
+  mode: EvaluationMode
+  pilotLimit?: number | null
+}
+
+export function getEvaluationBenchmark() {
+  return request<EvaluationBenchmark>(
+    '/evaluation/benchmark',
+    { method: 'GET' },
+    { timeoutMs: 10_000 },
+  )
+}
+
+export function startEvaluationRun({
+  adapters,
+  mode,
+  pilotLimit,
+}: StartEvaluationInput) {
+  return postJson<EvaluationRun>(
+    artifactPaths.evaluations,
+    { adapters, mode, pilot_limit: pilotLimit ?? null },
+    { timeoutMs: 30_000 },
+  )
+}
+
+export function listEvaluationRuns() {
+  return request<EvaluationRun[]>(
+    artifactPaths.evaluations,
+    { method: 'GET' },
+    { timeoutMs: 15_000 },
+  )
+}
+
+export function getEvaluationRun(id: string) {
+  return request<EvaluationRun>(
+    artifactPath('evaluations', id),
+    { method: 'GET' },
+    { timeoutMs: 15_000 },
+  )
+}
+
+export function evaluationDownloadUrl(id: string) {
+  return artifactDownloadUrl('evaluations', id)
 }
 
 export type DatasetQuestion = {

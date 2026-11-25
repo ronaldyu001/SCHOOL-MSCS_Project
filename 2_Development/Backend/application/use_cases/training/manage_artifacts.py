@@ -49,13 +49,19 @@ class DeleteArtifact:
         with self.store.transaction():
             self.store.recover_interrupted()
             artifact = self.store.get(kind, artifact_id)
-            runs = self.store.list_artifacts("runs") if kind == "datasets" else [artifact]
-            if any(
-                run["status"] in ACTIVE_STATUSES
-                and (kind == "runs" or run["dataset_id"] == artifact["id"])
-                for run in runs
+            if kind == "datasets":
+                if any(run["status"] in ACTIVE_STATUSES and run["dataset_id"] == artifact["id"]
+                       for run in self.store.list_artifacts("runs")):
+                    raise ArtifactConflict("This dataset is in use by an active training run.")
+            elif artifact["status"] in ACTIVE_STATUSES:
+                raise ArtifactConflict("This run is still active.")
+            if kind == "runs" and any(
+                evaluation["status"] in ACTIVE_STATUSES and any(
+                    source["run_id"] == artifact["id"]
+                    for seed in evaluation["adapters"].values() for source in seed.values()
+                ) for evaluation in self.store.list_artifacts("evaluations")
             ):
-                raise ArtifactConflict("This artifact is in use by an active training run.")
+                raise ArtifactConflict("This adapter is in use by an active evaluation.")
             self.store.delete(kind, artifact_id)
 
 
@@ -69,4 +75,6 @@ class DownloadArtifact:
             artifact = self.store.get(kind, artifact_id)
             if kind == "runs" and artifact["status"] != "completed":
                 raise ArtifactConflict("The adapter is available after the run completes.")
+            if kind == "evaluations" and artifact["status"] != "completed":
+                raise ArtifactConflict("Results are available after the evaluation completes.")
             return self.store.bundle(kind, artifact_id)

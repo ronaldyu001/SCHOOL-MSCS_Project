@@ -12,19 +12,15 @@ import {
   type AllocationSegment,
 } from '@/components/ui'
 import { PhaseCard, PhaseControls, Readout } from '../PhaseCard'
-import { proposeSplit, statusOf, type usePipeline } from '../usePipeline'
+import {
+  sharesOf,
+  sizesFor,
+  SPLIT_PRESETS,
+  statusOf,
+  type SplitShares,
+  type usePipeline,
+} from '../usePipeline'
 import styles from './SplitPhase.module.css'
-
-const PRESETS = [
-  { label: '70 / 10 / 20', train: 0.7, test: 0.2 },
-  { label: '80 / 10 / 10', train: 0.8, test: 0.1 },
-] as const
-
-function apply(total: number, train: number, test: number) {
-  const trainSize = Math.min(total, Math.round(total * train))
-  const testSize = Math.min(total - trainSize, Math.round(total * test))
-  return { trainSize, validationSize: total - trainSize - testSize, testSize }
-}
 
 export function SplitPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeline> }) {
   const { state, settings, update, patch, busy } = pipeline
@@ -33,9 +29,25 @@ export function SplitPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
   const loaded = state.load.status === 'done' ? state.load.result : null
 
   const total = loaded?.conversation_count ?? 0
+  const sizes = {
+    trainSize: settings.trainSize,
+    validationSize: settings.validationSize,
+    testSize: settings.testSize,
+  }
   const allocated = settings.trainSize + settings.validationSize + settings.testSize
   const balanced = total > 0 && allocated === total
   const sumErrorId = 'split-sum-error'
+
+  /** Typing a count also stores the proportions it describes, so pressing "Set
+   *  it up" on the setup page later reproduces this split rather than the
+   *  default one. */
+  const setSize = (key: keyof typeof sizes, value: number) => {
+    const next = { ...sizes, [key]: value }
+    patch({ ...next, splitShares: sharesOf(next) })
+  }
+
+  const applyShares = (shares: SplitShares) =>
+    patch({ ...sizesFor(total, shares), splitShares: shares })
 
   // The backend raises 422 unless the three sizes sum to the conversation
   // count, so the constraint is stated here instead of arriving as a failure.
@@ -113,7 +125,7 @@ export function SplitPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
                 disabled={busy || !loaded}
                 invalid={Boolean(sumError)}
                 errorId={sumErrorId}
-                onChange={(event) => update('trainSize', Number(event.target.value))}
+                onChange={(event) => setSize('trainSize', Number(event.target.value))}
               />
               <TextField
                 label="Validation"
@@ -126,7 +138,7 @@ export function SplitPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
                 invalid={Boolean(sumError)}
                 errorId={sumErrorId}
                 onChange={(event) =>
-                  update('validationSize', Number(event.target.value))
+                  setSize('validationSize', Number(event.target.value))
                 }
               />
               <TextField
@@ -139,7 +151,7 @@ export function SplitPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
                 disabled={busy || !loaded}
                 invalid={Boolean(sumError)}
                 errorId={sumErrorId}
-                onChange={(event) => update('testSize', Number(event.target.value))}
+                onChange={(event) => setSize('testSize', Number(event.target.value))}
               />
               <TextField
                 label="Seed"
@@ -192,13 +204,13 @@ export function SplitPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
               >
                 {result ? 'Re-split' : 'Create split'}
               </Button>
-              {PRESETS.map((preset) => (
+              {SPLIT_PRESETS.map((preset) => (
                 <Button
-                  key={preset.label}
+                  key={preset.value}
                   size="sm"
                   variant="ghost"
                   disabled={busy || !loaded}
-                  onClick={() => patch(apply(total, preset.train, preset.test))}
+                  onClick={() => applyShares(preset.shares)}
                 >
                   {preset.label}
                 </Button>
@@ -208,7 +220,7 @@ export function SplitPhase({ pipeline }: { pipeline: ReturnType<typeof usePipeli
                   size="sm"
                   variant="secondary"
                   disabled={busy}
-                  onClick={() => patch(proposeSplit(total))}
+                  onClick={() => patch(sizesFor(total, settings.splitShares))}
                 >
                   Balance to {total}
                 </Button>

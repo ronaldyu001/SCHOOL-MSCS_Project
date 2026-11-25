@@ -6,6 +6,7 @@ from application.use_cases.training.build_reward_dataset import TrainingExample
 from application.use_cases.training.training_run import TrainingSettings
 
 from .checkpoint import resolve_hub_revision
+from .runtime import describe_runtime
 
 
 class TransformersLoRATrainerAdapter:
@@ -28,8 +29,12 @@ class TransformersLoRATrainerAdapter:
 
         if device == "cuda" and not torch.cuda.is_available():
             raise ValueError("CUDA is unavailable. Start the backend with GPU access or use CPU.")
+        use_bf16 = device == "cuda" and torch.cuda.is_bf16_supported()
+        runtime = describe_runtime(device, mixed_precision="bfloat16" if use_bf16 else "none")
+        if device == "cuda":
+            torch.cuda.reset_peak_memory_stats()
         set_seed(settings.seed)
-        report_progress({"phase": "loading_model"})
+        report_progress({"phase": "loading_model", "runtime": runtime})
         commit = resolve_hub_revision(model_id, revision)
         checkpoint = AutoConfig.from_pretrained(model_id, revision=commit, trust_remote_code=False)
         tokenizer = AutoTokenizer.from_pretrained(model_id, revision=commit, trust_remote_code=False)
@@ -92,7 +97,7 @@ class TransformersLoRATrainerAdapter:
                 dataset_kwargs={"skip_prepare_dataset": True},
                 max_length=context_length,
                 use_cpu=device == "cpu",
-                bf16=device == "cuda" and torch.cuda.is_bf16_supported(),
+                bf16=use_bf16,
                 gradient_checkpointing=False,
                 learning_rate=settings.learning_rate,
                 num_train_epochs=settings.epochs,
@@ -115,6 +120,7 @@ class TransformersLoRATrainerAdapter:
         trainer.model.save_pretrained(output, safe_serialization=True)
         return commit, {
             **{key: value for key, value in result.metrics.items() if isfinite(value)},
+            **({"peak_device_memory_bytes": torch.cuda.max_memory_reserved()} if device == "cuda" else {}),
             "steps": result.global_step,
             "examples_used": len(rows),
             "examples_skipped": len(examples) - len(rows),

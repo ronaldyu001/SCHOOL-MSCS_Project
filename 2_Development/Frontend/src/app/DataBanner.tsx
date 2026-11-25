@@ -73,9 +73,13 @@ export function DataBanner({
             </>
           ) : (
             <>
-              <strong>No data loaded yet</strong>
+              <strong>
+                {data.prepared ? 'Dataset preparation restored' : 'No data loaded yet'}
+              </strong>
               <span className={styles.aside}>
-                Search and Training data both need the conversations indexed first.
+                {data.prepared
+                  ? 'Index the saved preparation once to make the conversations searchable.'
+                  : 'Search and Training data both need the conversations indexed first.'}
               </span>
             </>
           )}
@@ -90,7 +94,13 @@ export function DataBanner({
         ) : null}
 
         <Link to="/setup" className={styles.action}>
-          {building ? 'Watch it' : stopped ? 'Open setup' : 'Set up the data'}
+          {building
+            ? 'Watch it'
+            : stopped
+              ? 'Open setup'
+              : data.prepared
+                ? 'Index saved data'
+                : 'Set up the data'}
           <Icon name="arrow" size={13} />
         </Link>
       </div>

@@ -55,9 +55,16 @@ This hook is for development; packaged apps do not start Docker automatically.
 | `/setup` | Load LoCoMo, split by conversation, prepare the partitions, and index into Qdrant | `POST /data/load`, `/data/{id}/splits`, `/data/{id}/prepare`, `/data/{id}/index` |
 | `/training` | Build reward datasets from the indexed training split | `GET /rewards`, `POST /rewards/builds`, `GET /rewards/builds/{id}` |
 | `/fine-tuning` | Start LoRA training from a saved dataset and follow the run | `POST /training/runs`, `GET /training/runs` |
-| `/evaluation` | Planned evaluation scope, available after setup and a completed adapter | — |
+| `/evaluation` | Select matched adapters, run the validation pilot or official test, and review or download saved reports | `GET /evaluation/benchmark`, `POST /evaluation/runs`, `GET /evaluation/runs/{id}`, `GET /evaluation/runs/{id}/download` |
 | `/search` | Experiment with query rewriting, retrieval, and answering | `POST /retrieval/search`, `POST /model/rewrite`, `POST /model/answer` |
 | `/artifacts` | View, download, rename, annotate, and delete saved datasets and runs | `/rewards/datasets`, `/training/runs` |
+
+For a benchmark run, start with **Set up benchmark data**. Choose a seed and
+pilot or full build in **Training data**, then fine-tune one adapter for each of
+R0–R3 using the **Benchmark** preset. **Results** accepts one seed for validation
+or all frozen seeds for the official held-out test. The official test requires
+adapters with the recorded CUDA hardware and precision from the benchmark profile.
+Results are saved by the backend and can be reopened or downloaded after a reload.
 
 The pipeline's state lives in the shell (`AppShell` calls `usePipeline`, passing it
 through the router's outlet context) rather than inside the pipeline page, because the
@@ -256,3 +263,13 @@ that cannot run yet says *why* instead of presenting a dead button.
 
 **Before calling a change done:** `npm run lint && npm run build`, then look at the page
 at 375px and 1280px, in both themes, with the backend both up and down.
+
+Dataset preparations now survive backend restarts through `/artifacts/workspace/datasets.json`.
+The frontend discovers restored handles and verified partition indexes through `/data/prepared`,
+and recognizes a matching benchmark preparation without requiring a prior reward artifact.
+After a Qdrant reset, the preparation remains available but the index must be rebuilt once.
+
+Artifacts show reward, build scope, seed, model, creation time, row count/status, and notes
+without expanding each item. Search by name, notes, model, seed, or ID. Names and notes
+remain editable under Details and actions. Deletion uses an inline confirmation and accepts
+the API's empty HTTP 204 success response; artifacts used by active jobs remain protected.

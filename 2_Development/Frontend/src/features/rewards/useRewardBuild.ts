@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   buildRewardDatasets,
   cancelRewardBuild,
+  findRewardBuild,
+  watchRewardBuild,
   listRewards,
   REWARD_IDS,
   type PreparedPartition,
+  type RewardBuildInput,
   type RewardBuildUpdate,
   type RewardDatasetResponse,
   type RewardDef,
@@ -157,6 +160,9 @@ export function useRewardBuild(
   const [stopRequested, setStopRequested] = useState(false)
   const [stopError, setStopError] = useState<string | null>(null)
   const settingsRef = useRef(settings)
+  const tracking = useRef(false)
+  const lifecycle = useRef<AbortController | null>(null)
+  const { run: runBuild } = build
   // Shared with the search page: a build and the searches you sanity-checked
   // it against should not be able to come from different checkpoints.
   const { modelId, revision } = source.model
@@ -179,34 +185,77 @@ export function useRewardBuild(
     if (fallback) update('preparedId', fallback)
   }, [prepared.handles, prepared.sessionPreparedId, update])
 
-  const run = useCallback(() => {
-    const current = settingsRef.current
-    setJob(null)
-    setStopRequested(false)
-    setStopError(null)
-    return build.run(() =>
-      buildRewardDatasets(
-        {
-          preparedId: current.preparedId.trim(),
-          rewards: current.rewards,
-          maxInputsPerReward: current.maxInputsPerReward,
-          keepAllOneTies: current.rewards.includes('r0') && current.keepAllOneTies,
-          seed: current.seed,
-          candidates: current.candidates,
-          temperature: current.temperature,
-          rewriteMaxTokens: current.rewriteMaxTokens,
-          topK: current.topK,
-          tokenBudget: current.tokenBudget,
-          answerMaxTokens: current.answerMaxTokens,
-          r2PriorTurns: current.r2PriorTurns,
-          r3MaxTokens: current.r3MaxTokens,
-          modelId,
-          revision,
-        },
-        setJob,
-      ),
-    )
-  }, [build, modelId, revision])
+  useEffect(() => {
+    const controller = new AbortController()
+    lifecycle.current = controller
+    let discovering = false
+    const reconnect = async () => {
+      if (tracking.current || discovering || controller.signal.aborted) return
+      discovering = true
+      let attached = false
+      try {
+        const existing = await findRewardBuild()
+        if (!existing || tracking.current || controller.signal.aborted) return
+        tracking.current = true
+        attached = true
+        setStopRequested(false)
+        setStopError(null)
+        await runBuild(() => watchRewardBuild(existing, setJob, controller.signal))
+      } catch {
+        // Retry discovery after startup or a connection failure.
+      } finally {
+        discovering = false
+        if (attached && !controller.signal.aborted) tracking.current = false
+      }
+    }
+    void reconnect()
+    const timer = setInterval(() => void reconnect(), 5000)
+    return () => {
+      controller.abort()
+      clearInterval(timer)
+      tracking.current = false
+    }
+  }, [runBuild])
+
+  const run = useCallback(
+    (preset?: RewardBuildInput) => {
+      if (tracking.current) return Promise.resolve(null)
+      tracking.current = true
+      const current = settingsRef.current
+      setJob(null)
+      setStopRequested(false)
+      setStopError(null)
+      return runBuild(async () => {
+        const existing = await findRewardBuild()
+        if (existing)
+          return watchRewardBuild(existing, setJob, lifecycle.current?.signal)
+        return buildRewardDatasets(
+          preset ?? {
+            preparedId: current.preparedId.trim(),
+            rewards: current.rewards,
+            maxInputsPerReward: current.maxInputsPerReward,
+            keepAllOneTies: current.rewards.includes('r0') && current.keepAllOneTies,
+            seed: current.seed,
+            candidates: current.candidates,
+            temperature: current.temperature,
+            rewriteMaxTokens: current.rewriteMaxTokens,
+            topK: current.topK,
+            tokenBudget: current.tokenBudget,
+            answerMaxTokens: current.answerMaxTokens,
+            r2PriorTurns: current.r2PriorTurns,
+            r3MaxTokens: current.r3MaxTokens,
+            modelId,
+            revision,
+          },
+          setJob,
+          lifecycle.current?.signal,
+        )
+      }).finally(() => {
+        tracking.current = false
+      })
+    },
+    [runBuild, modelId, revision],
+  )
 
   const canStop =
     build.state.status === 'running' && job?.status === 'running' && !stopRequested
@@ -215,7 +264,7 @@ export function useRewardBuild(
     setStopRequested(true)
     setStopError(null)
     try {
-      await cancelRewardBuild(job.id)
+      setJob(await cancelRewardBuild(job.id))
     } catch (error) {
       setStopRequested(false)
       setStopError(describeError(error))

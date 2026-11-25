@@ -15,6 +15,9 @@ from infrastructure.dataset.locomo_adapter import LoCoMoAdapter
 from infrastructure.config import config
 
 from .resources import memory_resources
+from .dataset_workspace import index_provenance, index_signature, verify_conversation
+from application.use_cases.training.training_run import utc_now
+from infrastructure.dataset.workspace_store import workspace_write, save_workspace
 
 router = APIRouter(prefix="/data", tags=["data"])
 logger = logging.getLogger(__name__)
@@ -90,8 +93,9 @@ def require_indexed_partition(
     request: Request, prepared_id: str, partition: DatasetPartition
 ) -> None:
     owner = prepared_owners(request).get(prepared_id)
-    indexed = getattr(request.app.state, "indexed_conversation_owners", {})
-    if owner is None or any(indexed.get(item.id) != owner for item in partition.conversations):
+    if owner is None or not all(
+        verify_conversation(request.app.state, owner, item) for item in partition.conversations
+    ):
         raise HTTPException(
             status_code=409, detail="Index this prepared dataset's training partition first."
         )
@@ -104,20 +108,28 @@ def get_dataset(request: Request, dataset_id: str) -> Dataset:
     return dataset
 
 
+def partition_is_indexed(request: Request, owner: str | None, partition: DatasetPartition) -> bool:
+    if owner is None or not partition.conversations:
+        return False
+    try:
+        return all(verify_conversation(request.app.state, owner, item) for item in partition.conversations)
+    except Exception:
+        logger.warning("Could not verify dataset index availability", exc_info=True)
+        return False
+
+
 @router.get("/prepared")
 def list_prepared(request: Request) -> list[dict]:
-    """Prepared ids still held in this process, newest last.
-
-    Browser state is lost on reload but this is not, so the harness pages can
-    offer what the backend still has rather than making the user rerun phase 3.
-    """
+    """Durable prepared handles, provenance, and verified index availability."""
     owners = prepared_owners(request)
     return [
         {
             "prepared_id": prepared_id,
             "dataset_id": owners.get(prepared_id),
+            "provenance": prepared_provenance(request, prepared_id),
             "partitions": {
                 name: {
+                    "indexed": partition_is_indexed(request, owners.get(prepared_id), partition),
                     "conversation_count": len(partition.conversations),
                     "qa_count": len(partition.qa),
                     "turn_count": sum(
@@ -167,6 +179,7 @@ def list_questions(
 
 
 @router.post("/load", status_code=201)
+@workspace_write
 def load_dataset(body: LoadDatasetRequest, request: Request) -> dict:
     try:
         source = LoCoMoAdapter(Path(body.path))
@@ -175,7 +188,9 @@ def load_dataset(body: LoadDatasetRequest, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="Dataset file not found.")
     except (OSError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error))
-    dataset_id = str(uuid4())
+    existing = next((key for key, digest in getattr(request.app.state, "corpus_hashes", {}).items()
+                     if digest == source.corpus_sha256 and key in datasets(request)), None)
+    dataset_id = existing or str(uuid4())
     datasets(request)[dataset_id] = dataset
     if not hasattr(request.app.state, "corpus_hashes"):
         request.app.state.corpus_hashes = {}
@@ -189,6 +204,7 @@ def load_dataset(body: LoadDatasetRequest, request: Request) -> dict:
 
 
 @router.post("/{dataset_id}/splits", status_code=201)
+@workspace_write
 def create_split(dataset_id: str, body: CreateSplitRequest, request: Request) -> dict:
     dataset = get_dataset(request, dataset_id)
     try:
@@ -201,8 +217,14 @@ def create_split(dataset_id: str, body: CreateSplitRequest, request: Request) ->
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error))
-    split_id = str(uuid4())
+    existing = next((key for key, value in splits(request).items()
+                     if value == (dataset_id, split)
+                     and getattr(request.app.state, "split_seeds", {}).get(key) == body.seed), None)
+    split_id = existing or str(uuid4())
     splits(request)[split_id] = (dataset_id, split)
+    if not hasattr(request.app.state, "split_seeds"):
+        request.app.state.split_seeds = {}
+    request.app.state.split_seeds[split_id] = body.seed
     return {
         "dataset_id": dataset_id,
         "split_id": split_id,
@@ -214,6 +236,7 @@ def create_split(dataset_id: str, body: CreateSplitRequest, request: Request) ->
 
 
 @router.post("/{dataset_id}/prepare")
+@workspace_write
 def prepare_dataset(dataset_id: str, body: PrepareDatasetRequest, request: Request) -> dict:
     dataset = get_dataset(request, dataset_id)
     entry = splits(request).get(body.split_id)
@@ -224,7 +247,11 @@ def prepare_dataset(dataset_id: str, body: PrepareDatasetRequest, request: Reque
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error))
     # Retain the prepared data for subsequent indexing/evaluation stages.
-    prepared_id = str(uuid4())
+    existing = next((key for key, value in prepared_datasets(request).items()
+                     if prepared_owners(request).get(key) == dataset_id and value == prepared
+                     and prepared_provenance(request, key).get("split_id") == body.split_id
+                     and prepared_provenance(request, key).get("categories") == body.categories), None)
+    prepared_id = existing or str(uuid4())
     prepared_datasets(request)[prepared_id] = prepared
     prepared_owners(request)[prepared_id] = dataset_id
     if not hasattr(request.app.state, "prepared_provenance"):
@@ -233,6 +260,7 @@ def prepare_dataset(dataset_id: str, body: PrepareDatasetRequest, request: Reque
         "dataset_id": dataset_id,
         "corpus_sha256": getattr(request.app.state, "corpus_hashes", {}).get(dataset_id),
         "split_id": body.split_id,
+        "split_seed": getattr(request.app.state, "split_seeds", {}).get(body.split_id),
         "split": asdict(entry[1]),
         "categories": body.categories,
     }
@@ -257,6 +285,7 @@ def prepare_dataset(dataset_id: str, body: PrepareDatasetRequest, request: Reque
 
 
 @router.post("/{dataset_id}/index")
+@workspace_write
 def index_dataset(dataset_id: str, body: IndexDatasetRequest, request: Request) -> dict:
     get_dataset(request, dataset_id)
     prepared = prepared_datasets(request).get(body.prepared_id)
@@ -269,12 +298,35 @@ def index_dataset(dataset_id: str, body: IndexDatasetRequest, request: Request) 
     try:
         embedder, store = memory_resources(request, ensure_collection=True)
         indexer = IndexDataset(embedder, store)
-        indexed = getattr(request.app.state, "indexed_conversation_owners", {})
-        request.app.state.indexed_conversation_owners = indexed
-        for conversation in partition.conversations:
-            indexed.pop(conversation.id, None)
-        indexed_count = indexer.execute(partition.conversations, batch_size=body.batch_size)
-        indexed.update((conversation.id, dataset_id) for conversation in partition.conversations)
+        state = request.app.state
+        indexed = getattr(state, "indexed_conversation_owners", {})
+        state.indexed_conversation_owners = indexed
+        records = getattr(state, "index_records", {})
+        state.index_records = records
+        signature = index_signature(state, dataset_id)
+        reusable = all(verify_conversation(state, dataset_id, item, store) for item in partition.conversations)
+        indexed_count = sum(len(session.turns) for item in partition.conversations for session in item.sessions)
+        if not reusable:
+            # Commit invalidation before writing any points; interruption cannot
+            # leave a partial index marked as usable on the next startup.
+            for conversation in partition.conversations:
+                indexed.pop(conversation.id, None)
+                records.pop(conversation.id, None)
+            save_workspace(request)
+            store.index_signature = signature
+            try:
+                store.delete_conversations([item.id for item in partition.conversations])
+                indexed_count = indexer.execute(partition.conversations, batch_size=body.batch_size)
+            finally:
+                store.index_signature = None
+            for conversation in partition.conversations:
+                records[conversation.id] = {
+                    "dataset_id": dataset_id, "signature": signature,
+                    "vector_size": embedder.vector_size,
+                    "indexed_at": utc_now(),
+                    "provenance": index_provenance(state, dataset_id),
+                }
+                indexed[conversation.id] = dataset_id
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except Exception as error:
@@ -292,6 +344,7 @@ def index_dataset(dataset_id: str, body: IndexDatasetRequest, request: Request) 
         "partition": body.partition,
         "conversation_count": len(partition.conversations),
         "indexed_memory_count": indexed_count,
+        "reused": reusable,
         "collection": indexer.memory_store.collection_name,
         "embedding_model": config.embedding_model,
         "embedding_revision": config.embedding_revision,

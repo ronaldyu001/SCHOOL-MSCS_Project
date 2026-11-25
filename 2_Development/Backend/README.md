@@ -8,7 +8,7 @@ The dataset router (`presentation/routes_dataset.py`) exposes four explicit stag
 
 4. `POST /data/{dataset_id}/index` with `{"prepared_id": "<returned prepared ID>", "partition": "train", "batch_size": 64}` embeds and upserts that partition into Qdrant.
 
-Two read-only routes expose what the process is still holding, so a client that lost its
+Two read-only routes expose the restored workspace, so a client that lost its
 own state does not have to rerun the pipeline:
 
 - `GET /data/prepared` lists every prepared ID with per-partition conversation and QA
@@ -18,9 +18,11 @@ own state does not have to rerun the pipeline:
   IDs already split on `;`. The retrieval harness needs a question and its evidence turns
   to report recall at all, and R0 is scored against exactly these annotations.
 
-`LoadDataset` uses `DatasetPort` to construct a `Dataset` entity. `CreateDatasetSplit` works only with IDs. `PrepareDataset` accepts that loaded entity and the split, so preparation performs no file access. Prepared partitions are retained for indexing and future evaluation; evaluation has no route yet.
+`LoadDataset` uses `DatasetPort` to construct a `Dataset` entity. `CreateDatasetSplit` works only with IDs. `PrepareDataset` accepts that loaded entity and the split, so preparation performs no file access. The signal benchmark reloads the pinned corpus and split independently of the API's prepared handles.
 
-Datasets, splits, and prepared results currently live in application memory. They are lost on restart and are not shared between server workers. Run a single worker for this workflow. A split ID belongs to the dataset ID it was created from.
+Datasets, QA annotations, splits, prepared partitions, corpus fingerprints, and index provenance are saved atomically to `/artifacts/workspace/datasets.json` and restored at startup. The existing `.artifacts` bind mount persists this file. Identical load/split/prepare requests reuse their handles. Run a single API worker; this workspace is not a multi-process database.
+
+Index records include the corpus hash, pinned embedding configuration, memory format, collection, vector size, and indexing time. Qdrant points carry the corresponding signature. Startup and reuse checks verify expected IDs, payloads, dimensions, and exact per-conversation counts. Missing, altered, incompatible, or partial indexes are not advertised as ready. `GET /data/prepared` exposes provenance and each partition's `indexed` flag. Repeating a valid index request returns `reused: true` without re-embedding. Before a new index write, the old record is durably invalidated; a failed build must be indexed again. Prepared data survives a Qdrant wipe, but indexing must run once to repopulate it.
 
 ## Docker Compose and UAT
 
@@ -265,6 +267,58 @@ stay fixed. A completed run retains the source dataset ID and hash if that datas
 is deleted. Compose stores these artifacts in `2_Development/.artifacts` on the host.
 Set `ARTIFACTS_DIR` when running the API or builder outside Docker.
 
+## Evaluate the training signals
+
+The checked-in benchmark profile is `infrastructure/benchmarks/locomo-signal-v1.json`.
+It freezes the bundled corpus hash, the 7 train / 1 validation / 2 test conversation
+IDs, seeds 123/456/789, the Qwen2.5-0.5B revision, encoder settings, reward and LoRA
+settings, retrieval depth, token budgets, and the four proposal question categories.
+The split has more training conversations than the v1 proposal. The existing small
+checkpoint is used for the entire ladder. Record CUDA FP32 base weights with BF16
+mixed precision and the GPU's details in training manifests. The official comparison
+requires matching training hardware/runtime and a recorded CUDA allocator peak within
+the 16 GiB target. Verify actual fit on the target GPU before collecting official results.
+Set `BENCHMARK_CONFIG` and `BENCHMARK_DATASET` to select a separate local fixture profile
+when testing outside the shipped benchmark.
+
+From the Deployment directory, use the same CLI and profile for each tier:
+
+```sh
+docker compose exec backend python -m presentation.signal_benchmark headroom \
+  --limit 8 --output /artifacts/validation-headroom.json
+docker compose exec backend python -m presentation.signal_benchmark build \
+  --seed 123 --output /artifacts/signal-datasets-123.json
+docker compose exec backend python -m presentation.signal_benchmark train \
+  --seed 123 --datasets /artifacts/signal-datasets-123.json \
+  --output /artifacts/signal-adapters-123.json
+```
+
+Use a small `build --limit` for a pilot and check that each dataset has kept
+rewrites before training. The `headroom` command scores the raw query, prompted
+rewriter, and gold-evidence query against validation before training. `evaluate`
+accepts a JSON map such as `{"123":{"r0":"<run UUID>","r1":"<run UUID>","r2":"<run UUID>","r3":"<run UUID>"}}`.
+Use `evaluate --mode pilot --limit 8 --adapters /artifacts/pilot-runs.json` for a
+single-seed validation pilot. For official runs, build and train all three seeds
+on the target CUDA deployment, then combine the three generated adapter maps
+under their seed keys and pass that file to `evaluate --adapters`.
+
+The matching API entry points are `GET /evaluation/benchmark`, `POST /evaluation/runs`,
+`GET /evaluation/runs`, `GET /evaluation/runs/{id}`, and
+`GET /evaluation/runs/{id}/download`. The POST body takes `adapters` in the same format
+as the CLI map, an optional `mode` of `pilot` or `official`, and an optional `pilot_limit`.
+The worker indexes a separate held-out Qdrant collection and scores raw, prompted,
+and R0–R3 rewrites using the same fixed evidence-recall rule. Empty generations use
+the original query and are counted. Missing or unresolved evidence is counted as an
+exclusion. Valid tied scores and zero-recall questions stay in the results.
+
+Each completed evaluation saves a manifest, `summary.json`, `per-question.jsonl`,
+and `budget-curves.csv`. The report includes category and seed breakdowns, recall,
+first-hit rank among hits, misses, token usage, pairwise rewrite similarity, and zero
+recall overlap. Gold-query headroom and best-of-three are diagnostic series. The
+label-free gain recovered is `(reward recall - prompted recall) / (R0 recall - prompted recall)`
+when R0 improves on the prompted baseline. The ladder measures the effect of the
+training signals under SFT. PPRO's reported GRPO results provide external context.
+
 ## Application structure
 
 - `application/use_cases/dataset`: loading, split creation, preparation, and indexing.
@@ -272,7 +326,7 @@ Set `ARTIFACTS_DIR` when running the API or builder outside Docker.
 - `application/use_cases/retrieval`: query search, context packing, and evidence scoring.
 - `application/use_cases/rewards`: input builders and scorers for R0–R3.
 - `application/use_cases/training`: selecting rewrites, saving reward datasets, and fine-tuning.
-- `application/use_cases/evaluation`: evaluation use cases. Empty; no route yet.
+- `application/use_cases/evaluation`: benchmark validation, held-out scoring, and aggregation.
 - `application/ports/models`: interfaces for embedding, generation, tokenization, and continuation scoring.
 - `infrastructure/models`: concrete model adapters implementing those interfaces.
 

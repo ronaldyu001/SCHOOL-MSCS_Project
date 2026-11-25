@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from application.use_cases.generation.rewrite_query import REWRITE_PROMPT_VERSION
+from application.use_cases.dataset.index_dataset import MEMORY_FORMAT_VERSION
 from application.use_cases.training.build_reward_dataset import RewardBuildSettings
 from application.use_cases.training.build_reward_datasets import (
     REWARD_IDS, REWARD_PIPELINE_VERSION, BuildRewardDatasets,
@@ -243,6 +244,13 @@ def start_reward_build(body: RewardDatasetRequest, request: Request) -> RewardBu
     return RewardBuildStatus(id=job.id, status="running", attempted=job.attempted)
 
 
+@router.get("/builds")
+def current_reward_build(request: Request) -> dict:
+    """Discover work that outlived a browser session without starting another job."""
+    job = getattr(request.app.state, "reward_build_job", None)
+    return {"job": job.status() if job is not None and not job.future.done() else None}
+
+
 def _find_build(build_id: UUID, request: Request) -> RewardBuildJob:
     job = getattr(request.app.state, "reward_build_job", None)
     if job is None or job.id != build_id:
@@ -326,6 +334,7 @@ def _build(
             "embedding_device": config.embedding_device,
             "embedding_max_length": config.embedding_max_length,
             "embedding_query_instruction": config.embedding_query_instruction,
+            "memory_format_version": MEMORY_FORMAT_VERSION,
             "reward_pipeline_version": REWARD_PIPELINE_VERSION,
             "rewrite_prompt_version": REWRITE_PROMPT_VERSION,
             "collection": store.collection_name,

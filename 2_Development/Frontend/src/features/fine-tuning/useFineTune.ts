@@ -3,10 +3,28 @@ import {
   startTrainingRun,
   TRAINING_DEFAULTS,
   TRAINING_LIMITS,
+  type EvaluationBenchmark,
   type TrainingRun,
   type TrainingSettings,
 } from '@/lib/api'
 import { useAsyncRun } from '@/lib/useAsyncRun'
+
+export function benchmarkTrainingSettings(
+  benchmark: EvaluationBenchmark,
+  seed: number,
+): TrainingSettings {
+  const settings = benchmark.training
+  return {
+    seed,
+    epochs: settings.epochs,
+    learningRate: settings.learning_rate,
+    batchSize: settings.batch_size,
+    gradientAccumulationSteps: settings.gradient_accumulation_steps,
+    maxLength: settings.max_length,
+    loraRank: settings.lora_rank,
+    loraAlpha: settings.lora_alpha,
+  }
+}
 
 /** Whole numbers everywhere but the learning rate, matching the backend. */
 const WHOLE: (keyof TrainingSettings)[] = [
@@ -81,17 +99,22 @@ export function useFineTune(onStarted: () => Promise<void>) {
    * which saved dataset is selected and what produced it.
    */
   const start = useCallback(
-    async (datasetId: string, fallback: { modelId: string; revision: string }) => {
-      const chosenModel = modelId.trim() || fallback.modelId
+    async (
+      datasetId: string,
+      fallback: { modelId: string; revision: string },
+      preset?: { modelId: string; revision: string; settings: TrainingSettings },
+    ) => {
+      const chosenModel = preset?.modelId ?? (modelId.trim() || fallback.modelId)
       const chosenRevision =
-        revision.trim() || (chosenModel === fallback.modelId ? fallback.revision : '')
+        preset?.revision ??
+        (revision.trim() || (chosenModel === fallback.modelId ? fallback.revision : ''))
       const run = await submit.run(() =>
         startTrainingRun({
           datasetId,
           modelId: chosenModel,
           revision: chosenRevision,
           name: name.trim(),
-          settings,
+          settings: preset?.settings ?? settings,
         }),
       )
       if (run) await onStarted()

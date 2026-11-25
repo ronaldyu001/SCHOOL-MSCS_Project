@@ -45,6 +45,8 @@ class TransformersLLMAdapter:
         *,
         revision: str | None = None,
         device: str | None = None,
+        adapter_path: Path | None = None,
+        dtype: str | None = None,
     ) -> None:
         if device is None:
             device = getenv("LLM_DEVICE", "cpu")
@@ -71,9 +73,14 @@ class TransformersLLMAdapter:
         self._tokenizer = AutoTokenizer.from_pretrained(
             model_name_or_path, revision=revision, trust_remote_code=False
         )
-        self._model = AutoModelForCausalLM.from_pretrained(
-            model_name_or_path, revision=revision, trust_remote_code=False
-        ).to(device)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name_or_path, revision=revision, trust_remote_code=False, dtype=dtype,
+        )
+        if adapter_path is not None:
+            from peft import PeftModel
+
+            model = PeftModel.from_pretrained(model, adapter_path, is_trainable=False)
+        self._model = model.to(device)
         self._model.eval()
 
     @property

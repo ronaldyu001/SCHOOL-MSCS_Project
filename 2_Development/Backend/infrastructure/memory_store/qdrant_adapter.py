@@ -17,6 +17,7 @@ class QdrantAdapter:
         self.client = client
         self.collection_name = collection_name
         self.vector_size = vector_size
+        self.index_signature: str | None = None
 
     @classmethod
     def from_config(
@@ -68,6 +69,7 @@ class QdrantAdapter:
                 id=str(uuid5(NAMESPACE_URL, f"memory-store/{memory.id}")),
                 vector=list(vector),
                 payload={
+                    "index_signature": self.index_signature,
                     "id": memory.id,
                     "conversation_id": memory.conversation_id,
                     "session_id": memory.session_id,
@@ -79,6 +81,49 @@ class QdrantAdapter:
         self.client.upsert(
             collection_name=self.collection_name, points=points, wait=True
         )
+
+    def delete_conversations(self, conversation_ids: Sequence[str]) -> None:
+        if conversation_ids:
+            self.client.delete(self.collection_name, points_selector=models.FilterSelector(
+                filter=models.Filter(must=[models.FieldCondition(
+                    key="conversation_id", match=models.MatchAny(any=list(conversation_ids)),
+                )]),
+            ), wait=True)
+
+    def index_matches(self, conversation, signature: str) -> bool:
+        """Verify every expected memory and reject partial or contaminated indexes."""
+        from application.use_cases.dataset.index_dataset import conversation_memories
+
+        if not self.client.collection_exists(self.collection_name):
+            return False
+        vectors = self.client.get_collection(self.collection_name).config.params.vectors
+        if not isinstance(vectors, models.VectorParams) or vectors.size != self.vector_size or vectors.distance != models.Distance.COSINE:
+            return False
+        memories = list(conversation_memories(conversation))
+        condition = models.Filter(must=[models.FieldCondition(
+            key="conversation_id", match=models.MatchValue(value=conversation.id),
+        )])
+        if self.client.count(self.collection_name, count_filter=condition, exact=True).count != len(memories):
+            return False
+        for start in range(0, len(memories), 256):
+            expected = {
+                str(uuid5(NAMESPACE_URL, f"memory-store/{memory.id}")): memory
+                for memory in memories[start:start + 256]
+            }
+            points = self.client.retrieve(self.collection_name, ids=list(expected), with_payload=True, with_vectors=False)
+            if len(points) != len(expected):
+                return False
+            for point in points:
+                memory = expected.get(str(point.id))
+                payload = point.payload or {}
+                if memory is None or any(payload.get(key) != value for key, value in {
+                    "index_signature": signature, "id": memory.id,
+                    "conversation_id": memory.conversation_id, "session_id": memory.session_id,
+                    "source_turn_ids": list(memory.source_turn_ids),
+                    "timestamp": memory.timestamp.isoformat(), "text": memory.text,
+                }.items()):
+                    return False
+        return True
 
     def search(
         self,

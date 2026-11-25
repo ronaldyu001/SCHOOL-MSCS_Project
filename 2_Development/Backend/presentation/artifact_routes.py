@@ -75,7 +75,7 @@ def artifact_router(path: str, kind: ArtifactKind) -> APIRouter:
     def download_artifact(artifact_id: UUID, request: Request) -> StreamingResponse:
         with artifact_errors():
             bundle = DownloadArtifact(request.app.state.artifact_store).execute(kind, str(artifact_id))
-        prefix = "reward-dataset" if kind == "datasets" else "rewrite-adapter"
+        prefix = {"datasets": "reward-dataset", "runs": "rewrite-adapter", "evaluations": "evaluation"}[kind]
         return StreamingResponse(
             _chunks(bundle),
             media_type="application/zip",
