@@ -254,6 +254,7 @@ export type PreparedPartition = PartitionCounts & {
 export type PreparedHandle = {
   prepared_id: string
   dataset_id: string | null
+  active_training: boolean
   provenance?: DatasetProvenance
   partitions: Record<Partition, PreparedPartition>
 }

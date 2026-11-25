@@ -5,7 +5,6 @@ import {
   Disclosure,
   PanelBody,
   PanelSection,
-  SelectField,
   TextField,
   type CheckOption,
 } from '@/components/ui'
@@ -33,7 +32,7 @@ export function BuildControls({
   actionLabel,
   disabled,
 }: BuildControlsProps) {
-  const { settings, update, prepared, handle, estimate, busy } = build
+  const { settings, update, handle, estimate, busy } = build
   const counts = handle?.partitions.train
   const needsQuestions =
     settings.rewards.includes('r0') || settings.rewards.includes('r1')
@@ -42,39 +41,19 @@ export function BuildControls({
   const limit = settings.maxInputsPerReward
   const validLimit = limit === null || (Number.isInteger(limit) && limit >= 1)
   const ready =
-    settings.preparedId.trim() !== '' &&
-    settings.rewards.length > 0 &&
-    validLimit &&
-    !missingQuestions
+    handle !== null && settings.rewards.length > 0 && validLimit && !missingQuestions
 
   return (
     <>
       <PanelSection>
         <div className={styles.form}>
           <div className={styles.grid}>
-            <SelectField
-              label="Dataset"
-              value={settings.preparedId}
-              disabled={busy || prepared.handles.length === 0}
-              onChange={(event) => update('preparedId', event.target.value)}
-              hint={
-                prepared.handles.length === 0
-                  ? 'Run the pipeline first to make one.'
-                  : 'Uses the indexed training partition.'
-              }
-            >
-              {prepared.handles.length === 0 ? (
-                <option value="">None yet</option>
-              ) : null}
-              {prepared.handles.map((item) => (
-                <option key={item.prepared_id} value={item.prepared_id}>
-                  {shortId(item.prepared_id)}
-                  {item.prepared_id === prepared.sessionPreparedId
-                    ? ' (this session)'
-                    : ''}
-                </option>
-              ))}
-            </SelectField>
+            <TextField
+              label="Active training dataset"
+              value={handle ? shortId(handle.prepared_id) : 'None'}
+              readOnly
+              hint={handle ? undefined : 'Index a training partition in Setup.'}
+            />
 
             <TextField
               label="Max inputs per reward"
@@ -230,7 +209,7 @@ export function BuildControls({
               Stop build
             </Button>
           ) : null}
-          {estimate.total !== null ? (
+          {ready && estimate.total !== null ? (
             <p className={styles.estimate}>
               Roughly {count(estimate.total)} calls to the model.
             </p>

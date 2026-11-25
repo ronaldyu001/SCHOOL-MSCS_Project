@@ -19,7 +19,7 @@ import { BuildControls } from '@/features/rewards/BuildControls'
 import { RewardCatalogue } from '@/features/rewards/RewardCatalogue'
 import { RewardOutcomes } from '@/features/rewards/RewardOutcomes'
 import { ModelPanel } from '@/features/harness/ModelPanel'
-import { benchmarkSetupKey, isPreparedBenchmark } from '@/features/pipeline/benchmark'
+import { isPreparedBenchmark } from '@/features/pipeline/benchmark'
 import { count, percent } from '@/lib/format'
 import { downloadExamples, downloadManifest } from './download'
 import styles from './TrainingPage.module.css'
@@ -39,18 +39,10 @@ export function TrainingPage() {
   } = useShell()
   const [params, setParams] = useSearchParams()
   const benchmark = evaluation.benchmark
-  const indexed =
-    pipeline.state.index.status === 'done' ? pipeline.state.index.result : null
-  const setup = pipeline.benchmarkSetup
-  const preparedId = benchmark
-    ? setup &&
-      setup.key === benchmarkSetupKey(benchmark) &&
-      indexed?.prepared_id === setup.preparedId
-      ? setup.preparedId
-      : (build.prepared.handles.findLast((handle) =>
-          isPreparedBenchmark(handle, benchmark),
-        )?.prepared_id ?? null)
-    : null
+  const preparedId =
+    benchmark && build.handle && isPreparedBenchmark(build.handle, benchmark)
+      ? build.handle.prepared_id
+      : null
   const benchmarkMode =
     params.get('mode') === 'benchmark' || (!params.has('mode') && preparedId !== null)
   const busyCompute = Boolean(evaluation.active || artifacts.active)
@@ -127,11 +119,7 @@ export function TrainingPage() {
               benchmark={benchmark}
               build={build}
               preparedId={preparedId}
-              counts={
-                build.prepared.handles.find(
-                  (handle) => handle.prepared_id === preparedId,
-                )?.partitions.train
-              }
+              counts={preparedId ? build.handle?.partitions.train : undefined}
               disabled={blocked}
             />
           ) : evaluation.error ? (

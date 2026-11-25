@@ -25,6 +25,7 @@ class WorkspaceSnapshot(BaseModel):
     corpus_hashes: dict[str, str] = Field(default_factory=dict)
     split_seeds: dict[str, int] = Field(default_factory=dict)
     index_records: dict[str, dict] = Field(default_factory=dict)
+    active_training_prepared_id: str | None = None
 
 
 class DatasetWorkspaceStore:
@@ -38,14 +39,26 @@ class DatasetWorkspaceStore:
             for name in WorkspaceSnapshot.model_fields:
                 if name != "version":
                     setattr(state, name, getattr(snapshot, name))
+            if "active_training_prepared_id" not in snapshot.model_fields_set:
+                state.active_training_prepared_id = next((
+                    prepared_id
+                    for prepared_id in reversed(snapshot.prepared_datasets)
+                    if (owner := snapshot.prepared_dataset_owners.get(prepared_id))
+                    and (train := snapshot.prepared_datasets[prepared_id].train.conversations)
+                    and all(
+                        snapshot.index_records.get(item.id, {}).get("dataset_id") == owner
+                        for item in train
+                    )
+                ), None)
             # Ownership is established only after checking the actual Qdrant points.
             state.indexed_conversation_owners = {}
 
     def save(self, state) -> None:
         with workspace_lock:
             snapshot = WorkspaceSnapshot(**{
-                name: getattr(state, name, {})
-                for name in WorkspaceSnapshot.model_fields if name != "version"
+                name: getattr(state, name)
+                for name in WorkspaceSnapshot.model_fields
+                if name != "version" and hasattr(state, name)
             })
             self.path.parent.mkdir(parents=True, exist_ok=True)
             temporary = None

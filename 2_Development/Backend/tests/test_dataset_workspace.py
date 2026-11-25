@@ -13,6 +13,7 @@ from qdrant_client import QdrantClient, models
 from infrastructure.dataset.workspace_store import DatasetWorkspaceStore
 from infrastructure.memory_store.qdrant_adapter import QdrantAdapter
 from presentation import routes_dataset as routes
+from presentation import routes_reward_datasets as reward_routes
 from presentation.dataset_workspace import restore_index_ownership
 
 
@@ -58,6 +59,7 @@ class DatasetWorkspaceTest(TestCase):
         app = FastAPI(lifespan=lifespan)
         app.state.dataset_workspace_store = workspace
         app.include_router(routes.router)
+        app.include_router(reward_routes.router, prefix="/rewards")
         return app
 
     def prepare(self, client):
@@ -106,6 +108,33 @@ class DatasetWorkspaceTest(TestCase):
             self.assertEqual(result.status_code, 200, result.text)
             self.assertFalse(result.json()['reused'])
             self.assertEqual(len(self.calls), 2)
+
+    def test_reward_builds_use_only_the_active_training_set_after_reload_and_restart(self):
+        with TestClient(self.app()) as client:
+            dataset, first = self.prepare(client)
+            self.assertEqual(self.index(client, dataset, first).status_code, 200)
+            provenance = client.get('/data/prepared').json()[0]['provenance']
+            prepared = client.post(
+                f'/data/{dataset}/prepare', json={'split_id': provenance['split_id']},
+            )
+            self.assertEqual(prepared.status_code, 200, prepared.text)
+            second = prepared.json()['prepared_id']
+            self.assertNotEqual(first, second)
+            self.assertEqual(self.index(client, dataset, second).status_code, 200)
+            self.assertEqual(self.prepare(client), (dataset, first))
+            self.assertEqual(len(self.calls), 1, 'the same conversations should reuse embeddings')
+
+        with TestClient(self.app()) as client, patch.object(reward_routes, 'language_model') as model:
+            active = [item for item in client.get('/data/prepared').json() if item['active_training']]
+            self.assertEqual([item['prepared_id'] for item in active], [second])
+            for endpoint in ('/rewards/datasets', '/rewards/builds'):
+                response = client.post(endpoint, json={'prepared_id': first, 'rewards': ['r0']})
+                self.assertEqual(response.status_code, 409, response.text)
+                self.assertIn('active training set', response.json()['detail'])
+            with patch.object(reward_routes, '_build', return_value=None):
+                response = client.post('/rewards/builds', json={'prepared_id': second, 'rewards': ['r0']})
+                self.assertEqual(response.status_code, 202, response.text)
+            model.assert_not_called()
 
     def test_interrupted_index_is_invalidated_durably(self):
         with TestClient(self.app()) as client:

@@ -125,7 +125,7 @@ export function BenchmarkBuildControls({
               Stop build
             </Button>
           ) : null}
-          {estimate.total !== null && validLimit ? (
+          {preparedId && estimate.total !== null && validLimit ? (
             <p className={styles.estimate}>
               Roughly {count(estimate.total)} calls to the model.
             </p>

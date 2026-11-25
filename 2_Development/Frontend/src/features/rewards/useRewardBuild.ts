@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   buildRewardDatasets,
   cancelRewardBuild,
@@ -17,7 +17,6 @@ import { describeError, resultOf, useAsyncRun } from '@/lib/useAsyncRun'
 import type { ShellData } from '@/app/shell-context'
 
 export type BuildSettings = {
-  preparedId: string
   rewards: RewardId[]
   maxInputsPerReward: number | null
   keepAllOneTies: boolean
@@ -34,7 +33,6 @@ export type BuildSettings = {
 
 /** Start with a small pilot. Clearing the input limit uses the full train split. */
 export const BUILD_DEFAULTS: BuildSettings = {
-  preparedId: '',
   rewards: [...REWARD_IDS],
   maxInputsPerReward: 2,
   keepAllOneTies: false,
@@ -117,28 +115,6 @@ export function useRewardCatalogue() {
 }
 
 /**
- * Prepared datasets available to build from.
- *
- * Read from the shared workspace rather than fetched again here, so a page
- * that only needs to know "is there a dataset" does not cost another request.
- */
-export function usePreparedHandles({ pipeline, workspace }: ShellData) {
-  const prepared = resultOf(pipeline.state.prepare)
-  const indexed = resultOf(pipeline.state.index)
-
-  return useMemo(
-    () => ({
-      handles: workspace.handles,
-      refresh: workspace.refresh,
-      sessionPreparedId: prepared?.prepared_id ?? null,
-      indexedPartition: indexed?.partition ?? null,
-      indexedCollection: indexed?.collection ?? null,
-    }),
-    [indexed, prepared, workspace],
-  )
-}
-
-/**
  * The build form, the run, and what it produced.
  *
  * Owned by the shell rather than the training page. A build is minutes of CPU
@@ -154,7 +130,11 @@ export function useRewardBuild(
     ...BUILD_DEFAULTS,
     ...initial,
   })
-  const prepared = usePreparedHandles(source)
+  const handle =
+    source.workspace.handles.find(
+      (item) => item.active_training && item.partitions.train.indexed,
+    ) ?? null
+  const preparedId = handle?.prepared_id
   const build = useAsyncRun<RewardDatasetResponse | null>()
   const [job, setJob] = useState<RewardBuildUpdate | null>(null)
   const [stopRequested, setStopRequested] = useState(false)
@@ -177,13 +157,6 @@ export function useRewardBuild(
     },
     [],
   )
-
-  // Default to this session's prepared dataset, else the newest the backend has.
-  useEffect(() => {
-    if (settingsRef.current.preparedId !== '') return
-    const fallback = prepared.sessionPreparedId ?? prepared.handles.at(-1)?.prepared_id
-    if (fallback) update('preparedId', fallback)
-  }, [prepared.handles, prepared.sessionPreparedId, update])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -217,45 +190,41 @@ export function useRewardBuild(
     }
   }, [runBuild])
 
-  const run = useCallback(
-    (preset?: RewardBuildInput) => {
-      if (tracking.current) return Promise.resolve(null)
-      tracking.current = true
-      const current = settingsRef.current
-      setJob(null)
-      setStopRequested(false)
-      setStopError(null)
-      return runBuild(async () => {
-        const existing = await findRewardBuild()
-        if (existing)
-          return watchRewardBuild(existing, setJob, lifecycle.current?.signal)
-        return buildRewardDatasets(
-          preset ?? {
-            preparedId: current.preparedId.trim(),
-            rewards: current.rewards,
-            maxInputsPerReward: current.maxInputsPerReward,
-            keepAllOneTies: current.rewards.includes('r0') && current.keepAllOneTies,
-            seed: current.seed,
-            candidates: current.candidates,
-            temperature: current.temperature,
-            rewriteMaxTokens: current.rewriteMaxTokens,
-            topK: current.topK,
-            tokenBudget: current.tokenBudget,
-            answerMaxTokens: current.answerMaxTokens,
-            r2PriorTurns: current.r2PriorTurns,
-            r3MaxTokens: current.r3MaxTokens,
-            modelId,
-            revision,
-          },
-          setJob,
-          lifecycle.current?.signal,
-        )
-      }).finally(() => {
-        tracking.current = false
-      })
-    },
-    [runBuild, modelId, revision],
-  )
+  function run(preset?: RewardBuildInput) {
+    if (tracking.current || !preparedId) return Promise.resolve(null)
+    tracking.current = true
+    const current = settingsRef.current
+    setJob(null)
+    setStopRequested(false)
+    setStopError(null)
+    return runBuild(async () => {
+      const existing = await findRewardBuild()
+      if (existing) return watchRewardBuild(existing, setJob, lifecycle.current?.signal)
+      return buildRewardDatasets(
+        preset ?? {
+          preparedId,
+          rewards: current.rewards,
+          maxInputsPerReward: current.maxInputsPerReward,
+          keepAllOneTies: current.rewards.includes('r0') && current.keepAllOneTies,
+          seed: current.seed,
+          candidates: current.candidates,
+          temperature: current.temperature,
+          rewriteMaxTokens: current.rewriteMaxTokens,
+          topK: current.topK,
+          tokenBudget: current.tokenBudget,
+          answerMaxTokens: current.answerMaxTokens,
+          r2PriorTurns: current.r2PriorTurns,
+          r3MaxTokens: current.r3MaxTokens,
+          modelId,
+          revision,
+        },
+        setJob,
+        lifecycle.current?.signal,
+      )
+    }).finally(() => {
+      tracking.current = false
+    })
+  }
 
   const canStop =
     build.state.status === 'running' && job?.status === 'running' && !stopRequested
@@ -283,14 +252,10 @@ export function useRewardBuild(
     [update],
   )
 
-  const handle =
-    prepared.handles.find((item) => item.prepared_id === settings.preparedId) ?? null
-
   return {
     settings,
     update,
     toggleReward,
-    prepared,
     handle,
     state: build.state,
     result: resultOf(build.state),

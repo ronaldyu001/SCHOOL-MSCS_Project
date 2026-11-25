@@ -92,6 +92,11 @@ def partition_of(prepared: PreparedDataset, name: str) -> DatasetPartition:
 def require_indexed_partition(
     request: Request, prepared_id: str, partition: DatasetPartition
 ) -> None:
+    if getattr(request.app.state, "active_training_prepared_id", None) != prepared_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Index this prepared dataset's training partition to make it the active training set.",
+        )
     owner = prepared_owners(request).get(prepared_id)
     if owner is None or not all(
         verify_conversation(request.app.state, owner, item) for item in partition.conversations
@@ -122,10 +127,12 @@ def partition_is_indexed(request: Request, owner: str | None, partition: Dataset
 def list_prepared(request: Request) -> list[dict]:
     """Durable prepared handles, provenance, and verified index availability."""
     owners = prepared_owners(request)
+    active_training_id = getattr(request.app.state, "active_training_prepared_id", None)
     return [
         {
             "prepared_id": prepared_id,
             "dataset_id": owners.get(prepared_id),
+            "active_training": prepared_id == active_training_id,
             "provenance": prepared_provenance(request, prepared_id),
             "partitions": {
                 name: {
@@ -327,6 +334,14 @@ def index_dataset(dataset_id: str, body: IndexDatasetRequest, request: Request) 
                     "provenance": index_provenance(state, dataset_id),
                 }
                 indexed[conversation.id] = dataset_id
+        if body.partition == "train" and partition.conversations:
+            previous = getattr(state, "active_training_prepared_id", None)
+            state.active_training_prepared_id = body.prepared_id
+            try:
+                save_workspace(request)
+            except Exception:
+                state.active_training_prepared_id = previous
+                raise
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except Exception as error:
