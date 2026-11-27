@@ -115,7 +115,8 @@ class StartEvaluation:
         teacher = provenance.get("r1_teacher") or {}
         if run["reward"] == "r1" and teacher.get("provider", "local") != "local":
             raise ValueError(f"{run_id} used a different benchmark R1 teacher.")
-        if provenance.get("settings", {}).get("keep_single_rewrite"):
+        build_settings = provenance.get("settings", {})
+        if build_settings.get("keep_single_rewrite") or build_settings.get("keep_tied_rewrite"):
             raise ValueError(f"{run_id} used a different benchmark candidate selection rule.")
         expected = {**benchmark.embedding, "categories": list(benchmark.categories),
                     "model_id": benchmark.model_id, "model_revision": benchmark.model_revision,
@@ -123,7 +124,7 @@ class StartEvaluation:
                     "rewrite_prompt_version": benchmark.rewrite_prompt_version}
         if any(provenance.get(key) != value for key, value in expected.items()):
             raise ValueError(f"{run_id} has different benchmark build provenance.")
-        if any(key not in provenance["settings"] or provenance["settings"][key] != value
+        if any(key not in build_settings or build_settings[key] != value
                for key, value in benchmark.build.items()):
             raise ValueError(f"{run_id} used non-benchmark reward settings.")
         if run["settings"] != asdict(benchmark.training_settings(seed)):

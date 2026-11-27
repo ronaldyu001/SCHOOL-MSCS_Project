@@ -55,6 +55,9 @@ export function RewardOutcomes({ result, definition, aside }: RewardOutcomesProp
           {result.kept_single_rewrites ? (
             <Stat label="Single rewrites kept" value={count(result.kept_single_rewrites)} />
           ) : null}
+          {result.kept_tied_rewrites ? (
+            <Stat label="Kept from tied scores" value={count(result.kept_tied_rewrites)} />
+          ) : null}
         </StatGrid>
 
         {result.attempted === 0 ? (
@@ -109,11 +112,13 @@ export function RewardOutcomes({ result, definition, aside }: RewardOutcomesProp
                     </span>
                   ) : (
                     <span className={styles.keptFlag}>
-                      {outcome.kept_all_one_tie
-                        ? 'kept from all-one tie'
-                        : outcome.kept_single_rewrite
-                          ? 'kept as the only distinct rewrite'
-                          : 'kept'}
+                      {outcome.kept_tied_rewrite
+                        ? 'kept from tied scores'
+                        : outcome.kept_all_one_tie
+                          ? 'kept from all-one tie'
+                          : outcome.kept_single_rewrite
+                            ? 'kept as the only distinct rewrite'
+                            : 'kept'}
                     </span>
                   ),
                 ],

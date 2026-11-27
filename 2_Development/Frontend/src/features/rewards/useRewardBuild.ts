@@ -22,7 +22,7 @@ export type BuildSettings = {
   rewriteGenerator: RewriteGenerator
   r1Teacher: RewriteGenerator
   maxInputsPerReward: number | null
-  keepAllOneTies: boolean
+  keepTiedRewrite: boolean
   keepSingleRewrite: boolean
   seed: number
   candidates: number
@@ -41,7 +41,7 @@ export const BUILD_DEFAULTS: BuildSettings = {
   rewriteGenerator: 'local',
   r1Teacher: 'local',
   maxInputsPerReward: 2,
-  keepAllOneTies: false,
+  keepTiedRewrite: false,
   keepSingleRewrite: false,
   seed: 123,
   candidates: 4,
@@ -214,7 +214,7 @@ export function useRewardBuild(
           r1Teacher: current.r1Teacher,
           rewards: current.rewards,
           maxInputsPerReward: current.maxInputsPerReward,
-          keepAllOneTies: current.rewards.includes('r0') && current.keepAllOneTies,
+          keepTiedRewrite: current.keepTiedRewrite,
           keepSingleRewrite: current.keepSingleRewrite,
           seed: current.seed,
           candidates: current.candidates,

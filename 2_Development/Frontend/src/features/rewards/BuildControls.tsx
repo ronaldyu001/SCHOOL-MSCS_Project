@@ -135,13 +135,11 @@ export function BuildControls({
           <CheckGroup
             legend="Sample retention"
             options={[
-              ...(settings.rewards.includes('r0')
-                ? [{ value: 'keepAllOneTies' as const, label: 'Keep one rewrite when every R0 candidate scores 1' }]
-                : []),
+              { value: 'keepTiedRewrite', label: 'Keep one rewrite when all scores tie' },
               { value: 'keepSingleRewrite', label: 'Keep one rewrite when candidates are duplicates' },
             ]}
             selected={[
-              ...(settings.keepAllOneTies ? ['keepAllOneTies' as const] : []),
+              ...(settings.keepTiedRewrite ? ['keepTiedRewrite' as const] : []),
               ...(settings.keepSingleRewrite ? ['keepSingleRewrite' as const] : []),
             ]}
             disabled={busy}

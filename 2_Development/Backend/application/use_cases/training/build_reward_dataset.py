@@ -27,6 +27,7 @@ class InputOutcome:
     tied_score: float | None = None
     kept_all_one_tie: bool = False
     kept_single_rewrite: bool = False
+    kept_tied_rewrite: bool = False
 
 
 @dataclass
@@ -44,6 +45,7 @@ class RewardDataset:
             "tied_winners": sum(outcome.top_ties > 1 for outcome in self.outcomes),
             "kept_all_one_ties": sum(outcome.kept_all_one_tie for outcome in self.outcomes),
             "kept_single_rewrites": sum(outcome.kept_single_rewrite for outcome in self.outcomes),
+            "kept_tied_rewrites": sum(outcome.kept_tied_rewrite for outcome in self.outcomes),
         }
 
 
@@ -58,6 +60,7 @@ class RewardBuildSettings:
     max_inputs_per_reward: int | None = None
     keep_all_one_ties: bool = False
     keep_single_rewrite: bool = False
+    keep_tied_rewrite: bool = False
 
     def __post_init__(self) -> None:
         if self.candidates < 2:
@@ -176,11 +179,13 @@ class BuildRewardDataset:
             if keep_single:
                 winner = (0, scores[0])
             tied_score = scores[0] if winner is None and len(scores) > 1 else None
+            kept_tied_rewrite = settings.keep_tied_rewrite and tied_score is not None
             kept_all_one_tie = (
-                reward == "r0" and settings.keep_all_one_ties and tied_score == 1.0
+                not kept_tied_rewrite and reward == "r0"
+                and settings.keep_all_one_ties and tied_score == 1.0
             )
-            if kept_all_one_tie:
-                winner = (0, 1.0)
+            if kept_tied_rewrite or kept_all_one_tie:
+                winner = (0, scores[0])
             if winner is None:
                 dataset.outcomes.append(InputOutcome(
                     item.input_id, count, "all_scores_tied", tied_score=tied_score,
@@ -192,4 +197,5 @@ class BuildRewardDataset:
                 item.input_id, count, winning_score=score, top_ties=scores.count(score),
                 tied_score=tied_score, kept_all_one_tie=kept_all_one_tie,
                 kept_single_rewrite=keep_single,
+                kept_tied_rewrite=kept_tied_rewrite,
             ))

@@ -1,10 +1,14 @@
 from datetime import datetime
+from hashlib import sha256
+from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Barrier
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
 from time import monotonic, sleep
+from urllib.error import HTTPError
 
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -12,17 +16,90 @@ import torch
 from presentation import routes_reward_datasets as routes
 
 from application.ports.models import ContextWindowExceeded
-from application.use_cases.training.build_reward_dataset import RewardBuildSettings
+from application.use_cases.generation.rewrite_query import RewriteCandidates, RewriteQuery
+from application.use_cases.rewards import RewardInput
+from application.use_cases.training.build_reward_dataset import BuildRewardDataset, RewardBuildSettings
 from application.use_cases.training.build_reward_datasets import BuildRewardDatasets
 from application.use_cases.training.manage_artifacts import SaveRewardDatasets
 from domain.entities import Conversation, DatasetPartition, QA, Session, Turn
 from infrastructure.models.llm.runtime import resolve_device
+from infrastructure.models.llm import openai_llm_adapter
 from infrastructure.models.llm.transformers_llm_adapter import _sampling_rng
 from infrastructure.training.artifact_store import FileArtifactStore
 from presentation.routes_reward_datasets import RewardBuildJob, RewardDatasetRequest
 
 
 class RewardBuildTest(TestCase):
+    def test_parallel_rewrites_preserve_candidate_order_and_deduplicate(self):
+        pair = Barrier(2, timeout=2)
+        responses = ("First", "second", "FIRST", "third")
+        candidates = {
+            int.from_bytes(sha256(f"123:input:{index}".encode()).digest()[:8], "big") >> 1: text
+            for index, text in enumerate(responses)
+        }
+
+        def generate(prompt, *, seed, **kwargs):
+            pair.wait()
+            return candidates[seed]
+
+        result = RewriteQuery(SimpleNamespace(generate=generate), max_concurrency=2).execute(
+            "question", input_id="input", seed=123, count=4, temperature=0.7, max_new_tokens=48,
+        )
+        self.assertEqual(result.queries, ("First", "second", "third"))
+
+    def test_openai_paces_requests_and_honors_rate_limit_cooldown(self):
+        clock = 10.0
+        request_times = []
+
+        def advance(delay):
+            nonlocal clock
+            clock += delay
+
+        def send(*args, **kwargs):
+            request_times.append(clock)
+            if len(request_times) == 1:
+                raise HTTPError(
+                    "", 429, "Rate limited", {"Retry-After": "3"},
+                    BytesIO(b'{"error":{"code":"rate_limit_exceeded"}}'),
+                )
+            return BytesIO(b'{"choices":[{"message":{"content":"Query"}}]}')
+
+        with (
+            patch.object(openai_llm_adapter, "monotonic", side_effect=lambda: clock),
+            patch.object(openai_llm_adapter, "sleep", side_effect=advance),
+            patch.object(openai_llm_adapter, "uniform", return_value=0),
+            patch.object(openai_llm_adapter, "urlopen", side_effect=send),
+        ):
+            model = openai_llm_adapter.OpenAILLMAdapter("test-key", requests_per_minute=60)
+            self.assertEqual(model.generate("first request"), "Query")
+            self.assertEqual(model.generate("next request"), "Query")
+        self.assertEqual(request_times, [10.0, 13.0, 14.0])
+
+    def test_tie_retention_keeps_first_rewrite_for_every_reward(self):
+        rewriter = SimpleNamespace(execute=lambda *args, **kwargs: RewriteCandidates(
+            "Prompt", ("first query", "second query")
+        ))
+        retrieval = SimpleNamespace(execute=lambda queries, **kwargs: [()] * len(queries))
+        context = SimpleNamespace(execute=lambda matches, budget: None)
+        expected_scores = {"r0": 1.0, "r1": 0.5, "r2": -0.1, "r3": 0.0}
+        inputs = {
+            reward: [RewardInput("q1", "c1", "Question", lambda _, score=score: score)]
+            for reward, score in expected_scores.items()
+        }
+        for keep_tie in (False, True):
+            results = BuildRewardDataset(
+                rewriter, retrieval, context, RewardBuildSettings(keep_tied_rewrite=keep_tie)
+            ).execute(inputs)
+            for reward, score in expected_scores.items():
+                with self.subTest(reward=reward, keep_tie=keep_tie):
+                    result = results[reward]
+                    self.assertEqual(result.summary()["kept_tied_rewrites"], int(keep_tie))
+                    self.assertEqual(result.outcomes[0].tied_score, score)
+                    if keep_tie:
+                        self.assertEqual(result.examples[0].completion, "first query")
+                    else:
+                        self.assertEqual(result.outcomes[0].skip_reason, "all_scores_tied")
+
     def test_device_selection_prefers_cuda_then_mps_then_cpu(self):
         with patch.object(torch.cuda, 'is_available', return_value=True) as cuda, (
             patch.object(torch.backends.mps, 'is_available', return_value=True)
@@ -221,6 +298,9 @@ class RewardBuildTest(TestCase):
                     "prepared_id": "prepared",
                     "all_benchmark_seeds": True,
                     "rewrite_generator": "openai",
+                    "keep_all_one_ties": True,
+                    "keep_single_rewrite": True,
+                    "keep_tied_rewrite": True,
                 })
                 self.assertEqual(started.status_code, 202, started.text)
                 initial = started.json()
@@ -232,4 +312,7 @@ class RewardBuildTest(TestCase):
                 for call in build.call_args_list:
                     self.assertEqual(call.args[0].rewards, ["r0", "r1", "r2", "r3"])
                     self.assertEqual(call.args[0].rewrite_generator, "openai")
+                    self.assertTrue(call.args[0].keep_all_one_ties)
+                    self.assertTrue(call.args[0].keep_single_rewrite)
+                    self.assertTrue(call.args[0].keep_tied_rewrite)
                     self.assertIsNone(call.args[0].max_inputs_per_reward)

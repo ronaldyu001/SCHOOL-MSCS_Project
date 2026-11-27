@@ -41,6 +41,7 @@ class BuildRewardDatasets:
         r2_prior_turns: int = 3,
         r3_max_tokens: int = 64,
         rewrite_model: LLMPort | None = None,
+        rewrite_concurrency: int = 1,
         r1_teacher_model: LLMPort | None = None,
         report_progress: Callable[[str, int], None] | None = None,
         check_cancelled: Callable[[], None] | None = None,
@@ -87,7 +88,7 @@ class BuildRewardDatasets:
                 ).execute(train.conversations, seed=settings.seed)
 
         return BuildRewardDataset(
-            RewriteQuery(self._model if rewrite_model is None else rewrite_model),
+            RewriteQuery(self._model if rewrite_model is None else rewrite_model, rewrite_concurrency),
             RetrieveMemories(self._embedder, self._store),
             BuildContext(self._tokenizer.count_tokens),
             settings,

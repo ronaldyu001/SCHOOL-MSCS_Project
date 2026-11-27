@@ -232,7 +232,17 @@ the entire training conversation and question to Luna for the reference
 answer. The local model still answers from retrieved memories. Full-history
 teacher calls add API input usage. With **Keep one rewrite when candidates
 are duplicates**, the scorer can keep the only distinct nonblank candidate
-and record its score, including a zero. Both options are experimental.
+and record its score, including a zero. **Keep one rewrite when all scores
+tie** keeps the first candidate for any reward when every distinct candidate
+gets the same score. This includes zero and negative ties. The official
+benchmark's default profile leaves both retention options off.
+
+Luna rewrite requests run up to four at a time per input. Set
+`OPENAI_REWRITE_CONCURRENCY` (1–16) and `OPENAI_REQUESTS_PER_MINUTE`
+(default 600) in the backend environment to match your project's limits.
+The request cap covers Luna rewrite and teacher calls, including retries,
+within a build. OpenAI also enforces token limits. Temporary rate-limit
+responses pause requests and retry with backoff.
 Set `keep_all_one_ties` to true (CLI `--keep-all-one-ties`) to keep one R0 rewrite
 when every candidate has evidence recall 1.0. Other all-tied inputs are skipped.
 New diagnostics record the shared score and identify rewrites kept by this option.

@@ -19,6 +19,12 @@ class Config:
     llm_model_revision: str = "060db6499f32faf8b98477b0a26969ef7d8b9987"
     training_defaults: TrainingSettings = field(default_factory=TrainingSettings)
     training_device: str = field(default_factory=lambda: os.environ.get("LLM_DEVICE", "auto"))
+    openai_rewrite_concurrency: int = field(
+        default_factory=lambda: int(os.environ.get("OPENAI_REWRITE_CONCURRENCY", "4"))
+    )
+    openai_requests_per_minute: int = field(
+        default_factory=lambda: int(os.environ.get("OPENAI_REQUESTS_PER_MINUTE", "600"))
+    )
     artifacts_dir: Path = field(
         default_factory=lambda: Path(os.environ.get("ARTIFACTS_DIR", "/artifacts"))
     )

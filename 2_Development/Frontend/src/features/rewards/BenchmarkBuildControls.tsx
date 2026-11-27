@@ -41,6 +41,7 @@ export function BenchmarkBuildControls({
   const [generator, setGenerator] = useState<RewriteGenerator>('local')
   const [teacher, setTeacher] = useState<RewriteGenerator>('local')
   const [keepSingleRewrite, setKeepSingleRewrite] = useState(false)
+  const [keepTiedRewrite, setKeepTiedRewrite] = useState(false)
   const seed = benchmark.seeds.includes(selectedSeed)
     ? selectedSeed
     : benchmark.seeds[0]
@@ -55,6 +56,7 @@ export function BenchmarkBuildControls({
     seed,
     maxInputsPerReward: pilot ? limit : profile.max_inputs_per_reward,
     keepAllOneTies: profile.keep_all_one_ties,
+    keepTiedRewrite,
     keepSingleRewrite,
     candidates: profile.candidates,
     temperature: profile.temperature,
@@ -131,10 +133,19 @@ export function BenchmarkBuildControls({
         </div>
         <CheckGroup
           legend="Sample retention"
-          options={[{ value: 'keep', label: 'Keep one rewrite when candidates are duplicates' }]}
-          selected={keepSingleRewrite ? ['keep'] : []}
+          options={[
+            { value: 'ties', label: 'Keep one rewrite when all scores tie' },
+            { value: 'duplicates', label: 'Keep one rewrite when candidates are duplicates' },
+          ]}
+          selected={[
+            ...(keepTiedRewrite ? ['ties' as const] : []),
+            ...(keepSingleRewrite ? ['duplicates' as const] : []),
+          ]}
           disabled={build.busy}
-          onToggle={() => setKeepSingleRewrite(!keepSingleRewrite)}
+          onToggle={(option) => {
+            if (option === 'ties') setKeepTiedRewrite(!keepTiedRewrite)
+            else setKeepSingleRewrite(!keepSingleRewrite)
+          }}
         />
       </PanelSection>
       <PanelBody>
@@ -142,7 +153,10 @@ export function BenchmarkBuildControls({
           Scores R0–R3 using the benchmark pipeline and {benchmark.model_id} at{' '}
           {shortId(benchmark.model_revision)}.
           {generator === 'openai' ? ' GPT-6 Luna sends rewrite inputs to OpenAI.' : ''}
-          {generator === 'openai' || teacher === 'openai' || keepSingleRewrite
+          {generator === 'openai' ||
+          teacher === 'openai' ||
+          keepSingleRewrite ||
+          keepTiedRewrite
             ? ' These settings are for experimental comparisons.'
             : ' Official results require a full build for every seed.'}
         </p>

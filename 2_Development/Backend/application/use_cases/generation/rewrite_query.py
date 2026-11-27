@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from hashlib import sha256
 
@@ -10,7 +11,7 @@ _REWRITE_TEMPLATE = """Rewrite the input as one standalone search query for conv
 
 Keep the intent and all details that affect the answer, including names, timing, and relationships.
 Resolve references using the input. For dialogue alone, query the event or fact earlier memories could clarify.
-Use precise search terms grounded in the input. Output only the query on one line.
+Use only facts from the input. Output only the query on one line.
 
 Input:
 Sam: I just bought tickets for the jazz festival.
@@ -18,8 +19,8 @@ Lee: Which show did you pick?
 Query: Which show at the jazz festival did Sam buy tickets for?
 
 Input:
-Did Gina finish her fashion-styling video before she opened her store?
-Query: Which came first, Gina finishing her fashion-styling video or Gina opening her store?
+When Gina has opened her clothing store?
+Query: When did Gina open her clothing store?
 
 Input:
 {text}
@@ -33,8 +34,9 @@ class RewriteCandidates:
 
 
 class RewriteQuery:
-    def __init__(self, model: LLMPort) -> None:
+    def __init__(self, model: LLMPort, max_concurrency: int = 1) -> None:
         self._model = model
+        self._max_concurrency = max_concurrency
 
     def execute(
         self,
@@ -48,18 +50,33 @@ class RewriteQuery:
         check_cancelled: Callable[[], None] | None = None,
     ) -> RewriteCandidates:
         prompt = _REWRITE_TEMPLATE.format(text=text.strip())
-        unique: dict[str, str] = {}
-        for index in range(count):
+
+        def generate(index: int) -> str:
             if check_cancelled is not None:
                 check_cancelled()
             seed_bytes = sha256(f"{seed}:{input_id}:{index}".encode()).digest()
             candidate_seed = int.from_bytes(seed_bytes[:8], "big") >> 1
-            generated = self._model.generate(
+            return self._model.generate(
                 prompt,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
                 seed=candidate_seed,
             ).strip()
+
+        if self._max_concurrency > 1 and count > 1:
+            with ThreadPoolExecutor(max_workers=min(self._max_concurrency, count)) as pool:
+                pending = [pool.submit(generate, index) for index in range(count)]
+                try:
+                    # Keep candidate order stable for deduplication and score ties.
+                    generated_queries = [task.result() for task in pending]
+                finally:
+                    for task in pending:
+                        task.cancel()
+        else:
+            generated_queries = map(generate, range(count))
+
+        unique: dict[str, str] = {}
+        for generated in generated_queries:
             if generated:
                 query = " ".join(generated.splitlines()[0].split())
                 unique.setdefault(query.casefold(), query)

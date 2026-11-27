@@ -54,6 +54,7 @@ class RewardDatasetRequest(BaseModel):
     max_inputs_per_reward: int | None = Field(default=4, ge=1, strict=True)
     keep_all_one_ties: bool = False
     keep_single_rewrite: bool = False
+    keep_tied_rewrite: bool = False
     seed: int = 123
     candidates: int = Field(default=4, ge=2, le=16, strict=True)
     temperature: float = Field(default=0.7, gt=0, le=5, allow_inf_nan=False)
@@ -94,6 +95,7 @@ class OutcomeOut(BaseModel):
     tied_score: float | None
     kept_all_one_tie: bool
     kept_single_rewrite: bool
+    kept_tied_rewrite: bool
 
 
 class RewardResult(BaseModel):
@@ -105,6 +107,7 @@ class RewardResult(BaseModel):
     tied_winners: int
     kept_all_one_ties: int
     kept_single_rewrites: int
+    kept_tied_rewrites: int
     examples: list[ExampleOut]
     outcomes: list[OutcomeOut]
 
@@ -211,6 +214,10 @@ def _prepare_build(
         )
     if body.rewrite_generator == "openai" and body.temperature > 2:
         raise HTTPException(status_code=422, detail="GPT-6 Luna requires Variety of 2 or less.")
+    if body.rewrite_generator == "openai" and not 1 <= config.openai_rewrite_concurrency <= 16:
+        raise HTTPException(status_code=422, detail="Set OPENAI_REWRITE_CONCURRENCY between 1 and 16.")
+    if (body.rewrite_generator == "openai" or uses_luna_teacher) and config.openai_requests_per_minute < 1:
+        raise HTTPException(status_code=422, detail="Set OPENAI_REQUESTS_PER_MINUTE to a positive integer.")
 
     try:
         BuildRewardDatasets.validate_inputs(partition, body.rewards)
@@ -224,6 +231,7 @@ def _prepare_build(
             max_inputs_per_reward=body.max_inputs_per_reward,
             keep_all_one_ties=body.keep_all_one_ties,
             keep_single_rewrite=body.keep_single_rewrite,
+            keep_tied_rewrite=body.keep_tied_rewrite,
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -264,6 +272,9 @@ def start_reward_build(body: RewardDatasetRequest, request: Request) -> RewardBu
             "model_id": benchmark.model_id,
             "revision": benchmark.model_revision,
             "seed": seeds[0],
+            "keep_all_one_ties": body.keep_all_one_ties,
+            "keep_single_rewrite": body.keep_single_rewrite,
+            "keep_tied_rewrite": body.keep_tied_rewrite,
         })
     else:
         seeds = (body.seed,)
@@ -349,7 +360,11 @@ def _build(
         model = language_model(request, model_id, revision)
         uses_luna_teacher = "r1" in body.rewards and body.r1_teacher == "openai"
         luna = (
-            OpenAILLMAdapter(os.environ["OPENAI_API_KEY"].strip())
+            OpenAILLMAdapter(
+                os.environ["OPENAI_API_KEY"].strip(),
+                requests_per_minute=config.openai_requests_per_minute,
+                check_cancelled=job.check_cancelled if job is not None else None,
+            )
             if body.rewrite_generator == "openai" or uses_luna_teacher else None
         )
         rewrite_model = luna if body.rewrite_generator == "openai" else None
@@ -364,6 +379,7 @@ def _build(
             r2_prior_turns=body.r2_prior_turns,
             r3_max_tokens=body.r3_max_tokens,
             rewrite_model=rewrite_model,
+            rewrite_concurrency=config.openai_rewrite_concurrency if rewrite_model is not None else 1,
             r1_teacher_model=teacher_model,
             report_progress=job.report if job is not None else None,
             check_cancelled=job.check_cancelled if job is not None else None,
@@ -438,6 +454,7 @@ def _build(
             tied_winners=summary["tied_winners"],
             kept_all_one_ties=summary["kept_all_one_ties"],
             kept_single_rewrites=summary["kept_single_rewrites"],
+            kept_tied_rewrites=summary["kept_tied_rewrites"],
             examples=[ExampleOut(**asdict(example)) for example in dataset.examples],
             outcomes=[OutcomeOut(**asdict(outcome)) for outcome in dataset.outcomes],
         ))

@@ -535,6 +535,7 @@ export type InputOutcome = {
   tied_score?: number | null
   kept_all_one_tie?: boolean
   kept_single_rewrite?: boolean
+  kept_tied_rewrite?: boolean
 }
 
 export type RewardResult = {
@@ -546,6 +547,7 @@ export type RewardResult = {
   tied_winners: number
   kept_all_one_ties?: number
   kept_single_rewrites?: number
+  kept_tied_rewrites?: number
   examples: TrainingExample[]
   outcomes: InputOutcome[]
 }
@@ -560,6 +562,7 @@ export type RewardBuildSettings = {
   max_inputs_per_reward: number | null
   keep_all_one_ties?: boolean
   keep_single_rewrite?: boolean
+  keep_tied_rewrite?: boolean
   answer_max_tokens: number
   r2_prior_turns: number
   r3_max_tokens: number
@@ -593,8 +596,9 @@ export type RewardBuildInput = Checkpoint & {
   allBenchmarkSeeds?: boolean
   rewards: RewardId[]
   maxInputsPerReward: number | null
-  keepAllOneTies: boolean
+  keepAllOneTies?: boolean
   keepSingleRewrite: boolean
+  keepTiedRewrite: boolean
   seed: number
   candidates: number
   temperature: number
@@ -751,6 +755,7 @@ export async function buildRewardDatasets(
         max_inputs_per_reward: input.maxInputsPerReward,
         keep_all_one_ties: input.keepAllOneTies,
         keep_single_rewrite: input.keepSingleRewrite,
+        keep_tied_rewrite: input.keepTiedRewrite,
         seed: input.seed,
         candidates: input.candidates,
         temperature: input.temperature,
@@ -815,7 +820,7 @@ export type SavedRewardDataset = SavedArtifact & {
   row_count: number
   summary: Pick<
     RewardResult,
-    'attempted' | 'skipped' | 'kept_all_one_ties' | 'kept_single_rewrites'
+    'attempted' | 'skipped' | 'kept_all_one_ties' | 'kept_single_rewrites' | 'kept_tied_rewrites'
   >
   provenance: DatasetProvenance
 }

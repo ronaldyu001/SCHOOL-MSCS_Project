@@ -76,6 +76,7 @@ export function isFrozenRewardBuild(
     (provenance.rewrite_generator?.provider ?? 'local') === 'local' &&
     (reward !== 'r1' || (provenance.r1_teacher?.provider ?? 'local') === 'local') &&
     !provenance.settings?.keep_single_rewrite &&
+    !provenance.settings?.keep_tied_rewrite &&
     provenance.model_id === benchmark.model_id &&
     provenance.model_revision === benchmark.model_revision &&
     provenance.reward_pipeline_version === benchmark.reward_pipeline_version &&

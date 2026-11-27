@@ -77,6 +77,7 @@ export function downloadManifest(result: RewardDatasetResponse) {
           skipped: reward.skipped,
           tied_winners: reward.tied_winners,
           kept_single_rewrites: reward.kept_single_rewrites,
+          kept_tied_rewrites: reward.kept_tied_rewrites,
         },
       ]),
     ),

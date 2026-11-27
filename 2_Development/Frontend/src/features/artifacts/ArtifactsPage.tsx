@@ -136,6 +136,9 @@ function ArtifactEditor({
             {dataset?.provenance.settings?.keep_single_rewrite ? (
               <span>{count(dataset.summary.kept_single_rewrites ?? 0)} single rewrites kept</span>
             ) : null}
+            {dataset?.provenance.settings?.keep_tied_rewrite ? (
+              <span>{count(dataset.summary.kept_tied_rewrites ?? 0)} rewrites kept from ties</span>
+            ) : null}
           </p>
           {run?.error ? <Callout tone="error">{run.error}</Callout> : null}
           {error ? (
