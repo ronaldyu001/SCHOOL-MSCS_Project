@@ -46,7 +46,7 @@
 \usepackage{listings}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,fit,calc,backgrounds,shapes.geometric,shapes.misc}
-\usepackage{pdflscape}
+\usepackage{rotating}       % sideways floats on upright pages
 \usepackage[normalem]{ulem}
 \usepackage[hidelinks,breaklinks=true]{hyperref}
 
@@ -707,36 +707,44 @@ Qdrant vector database and the Hugging Face Hub for model distribution. The
 console issues no research decisions of its own; it drives backend workflows
 and displays their results, so a run performed from the command line and a run
 performed from the user interface execute the same code.
-Figures~\ref{fig:component-a} and~\ref{fig:component-b} show the component
-structure across two panels.
+Figures~\ref{fig:component-a} through~\ref{fig:component-c} show the
+component structure across three panels, cut at the two vertical gaps in the
+diagram so that no box or label is divided.
 
-\begin{landscape}
 \begin{figure}[p]
 \centering
-\includegraphics[height=5.45in]{figures/component-a.png}
+\includegraphics[height=5.43in]{figures/component-a.png}
 \caption[Component architecture, part 1: console and application services]%
-{Component architecture, part 1 of 2: the desktop console, the single HTTP
+{Component architecture, part 1 of 3: the desktop console, the single HTTP
 boundary, and the backend's application services. The console issues no
 research decisions of its own. Arrows show calls or data flow; the backend
 boundary and its heading continue into Figure~\ref{fig:component-b}.}
 \label{fig:component-a}
 \end{figure}
-\end{landscape}
 
-\begin{landscape}
 \begin{figure}[p]
 \centering
-\includegraphics[height=5.45in]{figures/component-b.png}
-\caption[Component architecture, part 2: research workflows and services]%
-{Component architecture, part 2 of 2: the research workflows and model
-infrastructure, continuing from Figure~\ref{fig:component-a}, together with the
-two supporting services. The five research components of
-Section~\ref{sec:highlevel} appear here, and the research boundary across the
-middle records that \Ra--\Rc\ never read gold evidence while \Rz\ and
-evaluation may.}
+\includegraphics[height=5.43in]{figures/component-b.png}
+\caption[Component architecture, part 2: research workflows and models]%
+{Component architecture, part 2 of 3: the research workflows and model
+infrastructure, continuing from Figure~\ref{fig:component-a}. The five research
+components of Section~\ref{sec:highlevel} appear here, and the research
+boundary across the middle records that \Ra--\Rc\ never read gold evidence
+while \Rz\ and evaluation may.}
 \label{fig:component-b}
 \end{figure}
-\end{landscape}
+
+\begin{figure}[p]
+\centering
+\includegraphics[height=7.1in]{figures/component-c.png}
+\caption[Component architecture, part 3: the supporting services]%
+{Component architecture, part 3 of 3: the two services the backend depends on,
+continuing from Figure~\ref{fig:component-b}. Qdrant is required at run time;
+the Hugging Face Hub is contacted only to fetch pinned model revisions into a
+local cache, and all inference runs inside the backend. The arrows entering at
+the left come from the model adapters in Figure~\ref{fig:component-b}.}
+\label{fig:component-c}
+\end{figure}
 
 Five components carry the research logic, and each is independently testable.
 The \emph{memory pipeline} converts conversations into memories, embeds them,
@@ -1184,12 +1192,14 @@ reported with a caveat.
 \label{sec:implementation}
 
 Figures~\ref{fig:module-a} through~\ref{fig:module-c} show the module structure
-of the implemented system.
+of the implemented system. The dashed arrows running upward from infrastructure
+to the application ports in Figure~\ref{fig:module-b} are the dependency
+inversion the design rests on: each adapter implements a port that the use
+cases depend on, so no use case names a concrete model, store, or file format.
 
-\begin{landscape}
-\begin{figure}[p]
+\begin{sidewaysfigure}
 \centering
-\includegraphics[width=9in]{figures/module-a.png}
+\includegraphics[width=8.8in]{figures/module-a.png}
 \caption[Module structure, part 1: the frontend]%
 {Module structure, part 1 of 3: the frontend. Pages and shell sit above the
 workflow-state hooks, which sit above the shared modules and HTTP transport.
@@ -1197,27 +1207,21 @@ Throughout Figures~\ref{fig:module-a}--\ref{fig:module-c}, solid arrows are
 calls, dashed arrows mark a port implemented by an adapter, dashed boxes are
 composition and wiring, and coloured bands group layers.}
 \label{fig:module-a}
-\end{figure}
-\end{landscape}
+\end{sidewaysfigure}
 
-\begin{landscape}
-\begin{figure}[p]
+\begin{sidewaysfigure}
 \centering
 \includegraphics[width=8.8in]{figures/module-b.png}
 \caption[Module structure, part 2: the backend layers]%
 {Module structure, part 2 of 3: the backend's composition root, presentation,
-application, and infrastructure layers. The dashed arrows running upward from
-infrastructure to the application ports are the dependency inversion the design
-rests on: each adapter implements a port that the use cases depend on, so no
-use case names a concrete model, store, or file format.}
+application, and infrastructure layers, continuing from
+Figure~\ref{fig:module-a}.}
 \label{fig:module-b}
-\end{figure}
-\end{landscape}
+\end{sidewaysfigure}
 
-\begin{landscape}
-\begin{figure}[p]
+\begin{sidewaysfigure}
 \centering
-\includegraphics[width=9in]{figures/module-c.png}
+\includegraphics[width=8.8in]{figures/module-c.png}
 \caption[Module structure, part 3: domain and persistence]%
 {Module structure, part 3 of 3: the domain entities and the artifact and
 persistence support, continuing from Figure~\ref{fig:module-b}. Domain entities
@@ -1225,8 +1229,7 @@ carry no framework dependencies, and every durable artifact---the workspace
 snapshot, reward datasets, training manifests, LoRA adapters, and evaluation
 reports---is written beneath a single artifacts root.}
 \label{fig:module-c}
-\end{figure}
-\end{landscape}
+\end{sidewaysfigure}
 
 \subsection{Backend}
 

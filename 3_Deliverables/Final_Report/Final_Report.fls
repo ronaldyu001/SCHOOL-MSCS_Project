@@ -2,7 +2,7 @@ PWD /Users/ronaldyu/Desktop/CU_Denver/Projects/MS_Project/3_Deliverables/Final_R
 INPUT /usr/local/texlive/2026/texmf.cnf
 INPUT /usr/local/texlive/2026/texmf-dist/web2c/texmf.cnf
 INPUT /usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt
-INPUT /Users/ronaldyu/Desktop/CU_Denver/Projects/MS_Project/3_Deliverables/Final_Report/Final_Report.tex
+INPUT Final_Report.tex
 OUTPUT Final_Report.log
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/base/report.cls
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/base/report.cls
@@ -262,12 +262,8 @@ INPUT /usr/local/texlive/2026/texmf-dist/tex/generic/pgf/frontendlayer/tikz/libr
 INPUT /usr/local/texlive/2026/texmf-dist/tex/generic/pgf/frontendlayer/tikz/libraries/tikzlibraryshapes.misc.code.tex
 INPUT /usr/local/texlive/2026/texmf-dist/tex/generic/pgf/libraries/shapes/pgflibraryshapes.misc.code.tex
 INPUT /usr/local/texlive/2026/texmf-dist/tex/generic/pgf/libraries/shapes/pgflibraryshapes.misc.code.tex
-INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/pdflscape/pdflscape.sty
-INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/pdflscape/pdflscape.sty
-INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/pdflscape/pdflscape-nometadata.sty
-INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/pdflscape/pdflscape-nometadata.sty
-INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/graphics/lscape.sty
-INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/graphics/lscape.sty
+INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/graphics/rotating.sty
+INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/graphics/rotating.sty
 INPUT /usr/local/texlive/2026/texmf-dist/tex/generic/ulem/ulem.sty
 INPUT /usr/local/texlive/2026/texmf-dist/tex/generic/ulem/ulem.sty
 INPUT /usr/local/texlive/2026/texmf-dist/fonts/tfm/public/latex-fonts/lasy6.tfm
@@ -454,6 +450,11 @@ INPUT ./figures/component-b.png
 INPUT ./figures/component-b.png
 INPUT ./figures/component-b.png
 INPUT ./figures/component-b.png
+INPUT ./figures/component-c.png
+INPUT ./figures/component-c.png
+INPUT ./figures/component-c.png
+INPUT ./figures/component-c.png
+INPUT ./figures/component-c.png
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/newtx/t1ntxtt.fd
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/newtx/t1ntxtt.fd
 INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/newtx/t1ntxtt.fd
