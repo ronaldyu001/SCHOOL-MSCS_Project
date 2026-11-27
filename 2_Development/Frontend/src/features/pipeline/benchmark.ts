@@ -61,6 +61,7 @@ export function hasBenchmarkCategories(
 export function isFrozenRewardBuild(
   provenance: DatasetProvenance | undefined,
   benchmark: EvaluationBenchmark,
+  reward: string | undefined,
 ) {
   if (!provenance || !hasBenchmarkSource(provenance, benchmark)) return false
 
@@ -72,6 +73,9 @@ export function isFrozenRewardBuild(
 
   return (
     hasBenchmarkCategories(provenance, benchmark) &&
+    (provenance.rewrite_generator?.provider ?? 'local') === 'local' &&
+    (reward !== 'r1' || (provenance.r1_teacher?.provider ?? 'local') === 'local') &&
+    !provenance.settings?.keep_single_rewrite &&
     provenance.model_id === benchmark.model_id &&
     provenance.model_revision === benchmark.model_revision &&
     provenance.reward_pipeline_version === benchmark.reward_pipeline_version &&

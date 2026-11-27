@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import {
   Button,
   Callout,
+  CheckGroup,
   PanelBody,
   PanelSection,
   SelectField,
@@ -13,6 +14,7 @@ import {
   type EvaluationBenchmark,
   type PreparedPartition,
   type RewardBuildInput,
+  type RewriteGenerator,
 } from '@/lib/api'
 import { count, shortId } from '@/lib/format'
 import { estimateCalls, type RewardBuild } from './useRewardBuild'
@@ -36,18 +38,24 @@ export function BenchmarkBuildControls({
   const [selectedSeed, setSeed] = useState(benchmark.seeds[0])
   const [pilot, setPilot] = useState(true)
   const [limit, setLimit] = useState(32)
+  const [generator, setGenerator] = useState<RewriteGenerator>('local')
+  const [teacher, setTeacher] = useState<RewriteGenerator>('local')
+  const [keepSingleRewrite, setKeepSingleRewrite] = useState(false)
   const seed = benchmark.seeds.includes(selectedSeed)
     ? selectedSeed
     : benchmark.seeds[0]
   const profile = benchmark.build
   const input: RewardBuildInput = {
     preparedId: preparedId ?? '',
+    rewriteGenerator: generator,
+    r1Teacher: teacher,
     rewards: [...REWARD_IDS],
     modelId: benchmark.model_id,
     revision: benchmark.model_revision,
     seed,
     maxInputsPerReward: pilot ? limit : profile.max_inputs_per_reward,
     keepAllOneTies: profile.keep_all_one_ties,
+    keepSingleRewrite,
     candidates: profile.candidates,
     temperature: profile.temperature,
     rewriteMaxTokens: profile.rewrite_max_tokens,
@@ -59,6 +67,7 @@ export function BenchmarkBuildControls({
   }
   const estimate = estimateCalls(input, counts)
   const validLimit = !pilot || (Number.isSafeInteger(limit) && limit > 0)
+  const ready = !disabled && !build.busy && Boolean(preparedId) && validLimit
 
   return (
     <>
@@ -77,12 +86,35 @@ export function BenchmarkBuildControls({
             ))}
           </SelectField>
           <SelectField
+            label="R1 full-history teacher"
+            value={teacher}
+            disabled={build.busy}
+            hint={
+              teacher === 'openai'
+                ? 'Sends the entire training conversation to OpenAI for each teacher answer.'
+                : undefined
+            }
+            onChange={(event) => setTeacher(event.target.value === 'openai' ? 'openai' : 'local')}
+          >
+            <option value="local">Local model</option>
+            <option value="openai">GPT-6 Luna (OpenAI API)</option>
+          </SelectField>
+          <SelectField
+            label="Rewrite generator"
+            value={generator}
+            disabled={build.busy}
+            onChange={(event) => setGenerator(event.target.value === 'openai' ? 'openai' : 'local')}
+          >
+            <option value="local">Local model</option>
+            <option value="openai">GPT-6 Luna (OpenAI API)</option>
+          </SelectField>
+          <SelectField
             label="Build scope"
             value={pilot ? 'pilot' : 'official'}
             disabled={build.busy}
             onChange={(event) => setPilot(event.target.value === 'pilot')}
           >
-            <option value="pilot">Capped validation pilot</option>
+            <option value="pilot">Capped training build</option>
             <option value="official">Full benchmark training split</option>
           </SelectField>
           {pilot ? (
@@ -97,13 +129,22 @@ export function BenchmarkBuildControls({
             />
           ) : null}
         </div>
+        <CheckGroup
+          legend="Sample retention"
+          options={[{ value: 'keep', label: 'Keep one rewrite when candidates are duplicates' }]}
+          selected={keepSingleRewrite ? ['keep'] : []}
+          disabled={build.busy}
+          onToggle={() => setKeepSingleRewrite(!keepSingleRewrite)}
+        />
       </PanelSection>
       <PanelBody>
         <p>
-          Builds R0–R3 with {benchmark.model_id} at {shortId(benchmark.model_revision)}.
-          {pilot
-            ? ' Use a pilot to check all four rewards before a full build.'
-            : ' Repeat the full build for every benchmark seed to qualify for official results.'}
+          Scores R0–R3 using the benchmark pipeline and {benchmark.model_id} at{' '}
+          {shortId(benchmark.model_revision)}.
+          {generator === 'openai' ? ' GPT-6 Luna sends rewrite inputs to OpenAI.' : ''}
+          {generator === 'openai' || teacher === 'openai' || keepSingleRewrite
+            ? ' These settings are for experimental comparisons.'
+            : ' Official results require a full build for every seed.'}
         </p>
         {!preparedId ? (
           <Callout title="Prepare the benchmark split">
@@ -115,11 +156,19 @@ export function BenchmarkBuildControls({
             variant="primary"
             icon="refresh"
             busy={build.busy}
-            disabled={disabled || build.busy || !preparedId || !validLimit}
+            disabled={!ready}
             onClick={() => void build.run(input)}
           >
             Build benchmark datasets
           </Button>
+          {!pilot ? (
+            <Button
+              disabled={!ready}
+              onClick={() => void build.run({ ...input, allBenchmarkSeeds: true })}
+            >
+              Build all {benchmark.seeds.length * REWARD_IDS.length} datasets
+            </Button>
+          ) : null}
           {build.busy ? (
             <Button disabled={!build.canStop} onClick={() => void build.stop()}>
               Stop build
@@ -127,7 +176,8 @@ export function BenchmarkBuildControls({
           ) : null}
           {preparedId && estimate.total !== null && validLimit ? (
             <p className={styles.estimate}>
-              Roughly {count(estimate.total)} calls to the model.
+              Roughly {count(estimate.total)} model calls per seed.
+              {!pilot && ` About ${count(estimate.total * benchmark.seeds.length)} for all seeds.`}
             </p>
           ) : null}
         </div>

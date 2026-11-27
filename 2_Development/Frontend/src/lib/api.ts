@@ -534,6 +534,7 @@ export type InputOutcome = {
   top_ties: number
   tied_score?: number | null
   kept_all_one_tie?: boolean
+  kept_single_rewrite?: boolean
 }
 
 export type RewardResult = {
@@ -544,6 +545,7 @@ export type RewardResult = {
   skipped: Record<string, number>
   tied_winners: number
   kept_all_one_ties?: number
+  kept_single_rewrites?: number
   examples: TrainingExample[]
   outcomes: InputOutcome[]
 }
@@ -557,6 +559,7 @@ export type RewardBuildSettings = {
   token_budget: number
   max_inputs_per_reward: number | null
   keep_all_one_ties?: boolean
+  keep_single_rewrite?: boolean
   answer_max_tokens: number
   r2_prior_turns: number
   r3_max_tokens: number
@@ -572,17 +575,26 @@ export type RewardDatasetResponse = {
   model_revision: string | null
   embedding_model: string
   rewrite_prompt_version: string
+  rewrite_generator?: RewriteGeneratorProvenance
+  r1_teacher?: RewriteGeneratorProvenance | null
   reward_pipeline_version: number
   settings: RewardBuildSettings
   results: RewardResult[]
   elapsed_seconds: number
 }
 
+export type RewriteGenerator = 'local' | 'openai'
+type RewriteGeneratorProvenance = { provider: RewriteGenerator; model_id: string }
+
 export type RewardBuildInput = Checkpoint & {
   preparedId: string
+  rewriteGenerator: RewriteGenerator
+  r1Teacher: RewriteGenerator
+  allBenchmarkSeeds?: boolean
   rewards: RewardId[]
   maxInputsPerReward: number | null
   keepAllOneTies: boolean
+  keepSingleRewrite: boolean
   seed: number
   candidates: number
   temperature: number
@@ -599,12 +611,18 @@ export type RewardBuildProgress = Partial<Record<RewardId, number>>
 export type RewardBuildStatus = {
   id: string
   attempted: RewardBuildProgress
+  seed?: number | null
+  seeds?: number[]
+  completed_seeds?: number[]
 } & (
   | { status: 'running' | 'cancelling' | 'cancelled' | 'saving'; result: null }
   | { status: 'completed'; result: RewardDatasetResponse }
 )
 
-export type RewardBuildUpdate = Pick<RewardBuildStatus, 'id' | 'status' | 'attempted'>
+export type RewardBuildUpdate = Pick<
+  RewardBuildStatus,
+  'id' | 'status' | 'attempted' | 'seed' | 'seeds' | 'completed_seeds'
+>
 
 function validateRewardBuildStatus(job: RewardBuildStatus): RewardBuildStatus {
   if (
@@ -687,8 +705,8 @@ export async function watchRewardBuild(
   let job = validateRewardBuildStatus(initial)
   rememberRewardBuild(job.id)
   while (!signal?.aborted) {
-    const { id, status, attempted } = job
-    onProgress({ id, status, attempted })
+    const { id, status, attempted, seed, seeds, completed_seeds } = job
+    onProgress({ id, status, attempted, seed, seeds, completed_seeds })
     if (status === 'completed' || status === 'cancelled') {
       rememberRewardBuild(null)
       return job.result
@@ -726,9 +744,13 @@ export async function buildRewardDatasets(
       {
         ...checkpoint(input),
         prepared_id: input.preparedId,
+        rewrite_generator: input.rewriteGenerator,
+        r1_teacher: input.r1Teacher,
+        all_benchmark_seeds: input.allBenchmarkSeeds,
         rewards: input.rewards,
         max_inputs_per_reward: input.maxInputsPerReward,
         keep_all_one_ties: input.keepAllOneTies,
+        keep_single_rewrite: input.keepSingleRewrite,
         seed: input.seed,
         candidates: input.candidates,
         temperature: input.temperature,
@@ -784,12 +806,17 @@ export type DatasetProvenance = Partial<BenchmarkEmbedding> & {
   settings?: Partial<RewardBuildSettings>
   reward_pipeline_version?: number
   rewrite_prompt_version?: string
+  rewrite_generator?: RewriteGeneratorProvenance
+  r1_teacher?: RewriteGeneratorProvenance | null
 }
 
 export type SavedRewardDataset = SavedArtifact & {
   build_id: string
   row_count: number
-  summary: Pick<RewardResult, 'attempted' | 'skipped' | 'kept_all_one_ties'>
+  summary: Pick<
+    RewardResult,
+    'attempted' | 'skipped' | 'kept_all_one_ties' | 'kept_single_rewrites'
+  >
   provenance: DatasetProvenance
 }
 

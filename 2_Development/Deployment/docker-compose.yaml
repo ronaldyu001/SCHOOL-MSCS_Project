@@ -9,6 +9,7 @@ services:
     environment:
       QDRANT_URL: http://qdrant:6333
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
       - ../.data:/data:ro
       - ../.artifacts:/artifacts

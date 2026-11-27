@@ -9,8 +9,9 @@ support the full training partition without keeping a single request open.
 """
 
 import logging
+import os
 from concurrent.futures import Future
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from threading import Event, Lock, Thread
 from time import perf_counter
 from typing import Literal
@@ -28,6 +29,8 @@ from application.use_cases.training.build_reward_datasets import (
 from application.use_cases.training.manage_artifacts import SaveRewardDatasets
 from domain.entities import DatasetPartition
 from infrastructure.config import config
+from infrastructure.evaluation.runtime import load_benchmark
+from infrastructure.models.llm.openai_llm_adapter import OpenAILLMAdapter, OpenAIRewriteError
 
 from .artifact_routes import artifact_router
 from .resources import language_model, memory_resources, require_collection, resolve_checkpoint
@@ -50,6 +53,7 @@ class RewardDatasetRequest(BaseModel):
     rewards: list[str] = Field(default=list(REWARD_IDS), min_length=1, max_length=4)
     max_inputs_per_reward: int | None = Field(default=4, ge=1, strict=True)
     keep_all_one_ties: bool = False
+    keep_single_rewrite: bool = False
     seed: int = 123
     candidates: int = Field(default=4, ge=2, le=16, strict=True)
     temperature: float = Field(default=0.7, gt=0, le=5, allow_inf_nan=False)
@@ -61,6 +65,9 @@ class RewardDatasetRequest(BaseModel):
     r3_max_tokens: int = Field(default=64, gt=0, le=256, strict=True)
     model_id: str | None = Field(default=None, max_length=193, pattern=MODEL_ID_PATTERN)
     revision: str | None = Field(default=None, pattern=r"\S")
+    rewrite_generator: Literal["local", "openai"] = "local"
+    r1_teacher: Literal["local", "openai"] = "local"
+    all_benchmark_seeds: bool = False
 
     @field_validator("rewards")
     @classmethod
@@ -86,6 +93,7 @@ class OutcomeOut(BaseModel):
     top_ties: int
     tied_score: float | None
     kept_all_one_tie: bool
+    kept_single_rewrite: bool
 
 
 class RewardResult(BaseModel):
@@ -96,6 +104,7 @@ class RewardResult(BaseModel):
     skipped: dict[str, int]
     tied_winners: int
     kept_all_one_ties: int
+    kept_single_rewrites: int
     examples: list[ExampleOut]
     outcomes: list[OutcomeOut]
 
@@ -112,6 +121,8 @@ class RewardDatasetResponse(BaseModel):
     model_revision: str | None
     embedding_model: str
     rewrite_prompt_version: str
+    rewrite_generator: dict[str, str]
+    r1_teacher: dict[str, str] | None = None
     reward_pipeline_version: int
     settings: dict
     results: list[RewardResult]
@@ -122,6 +133,9 @@ class RewardBuildStatus(BaseModel):
     id: UUID
     status: Literal["running", "cancelling", "cancelled", "saving", "completed"]
     attempted: dict[str, int]
+    seed: int | None = None
+    seeds: tuple[int, ...] = ()
+    completed_seeds: tuple[int, ...] = ()
     result: RewardDatasetResponse | None = None
 
 
@@ -134,6 +148,9 @@ class RewardBuildJob:
     id: UUID = field(default_factory=uuid4)
     future: Future[RewardDatasetResponse | None] = field(default_factory=Future)
     attempted: dict[str, int] = field(default_factory=dict)
+    seed: int | None = None
+    seeds: tuple[int, ...] = ()
+    completed_seeds: tuple[int, ...] = ()
     _stop: Event = field(default_factory=Event)
     _phase_lock: Lock = field(default_factory=Lock)
     _saving: bool = False
@@ -156,22 +173,44 @@ class RewardBuildJob:
             if not self._saving and not self.future.done():
                 self._stop.set()
 
+    def finish_seed(self, seed: int, next_seed: int | None) -> None:
+        with self._phase_lock:
+            self.completed_seeds = (*self.completed_seeds, seed)
+            if next_seed is not None:
+                self.seed = next_seed
+                self.attempted = dict.fromkeys(self.attempted, 0)
+                self._saving = False
+
     def status(self) -> RewardBuildStatus:
         with self._phase_lock:
             if self.future.done():
                 result = self.future.result()
                 return RewardBuildStatus(
                     id=self.id, status="completed" if result is not None else "cancelled",
-                    attempted=self.attempted, result=result,
+                    attempted=self.attempted, result=result, seed=self.seed,
+                    seeds=self.seeds, completed_seeds=self.completed_seeds,
                 )
             phase = "saving" if self._saving else "cancelling" if self._stop.is_set() else "running"
-            return RewardBuildStatus(id=self.id, status=phase, attempted=self.attempted)
+            return RewardBuildStatus(
+                id=self.id, status=phase, attempted=self.attempted, seed=self.seed,
+                seeds=self.seeds, completed_seeds=self.completed_seeds,
+            )
 
 
 def _prepare_build(
     body: RewardDatasetRequest, request: Request,
 ) -> tuple[DatasetPartition, RewardBuildSettings]:
     partition = get_prepared(request, body.prepared_id).train
+
+    uses_luna_teacher = "r1" in body.rewards and body.r1_teacher == "openai"
+    if (body.rewrite_generator == "openai" or uses_luna_teacher) and not os.environ.get(
+        "OPENAI_API_KEY", ""
+    ).strip():
+        raise HTTPException(
+            status_code=422, detail="Set OPENAI_API_KEY on the backend to use GPT-6 Luna."
+        )
+    if body.rewrite_generator == "openai" and body.temperature > 2:
+        raise HTTPException(status_code=422, detail="GPT-6 Luna requires Variety of 2 or less.")
 
     try:
         BuildRewardDatasets.validate_inputs(partition, body.rewards)
@@ -184,6 +223,7 @@ def _prepare_build(
             token_budget=body.token_budget,
             max_inputs_per_reward=body.max_inputs_per_reward,
             keep_all_one_ties=body.keep_all_one_ties,
+            keep_single_rewrite=body.keep_single_rewrite,
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -203,7 +243,7 @@ def build_reward_datasets(
     body: RewardDatasetRequest, request: Request,
 ) -> RewardDatasetResponse:
     """Score a small pilot in a single request."""
-    if body.max_inputs_per_reward is None or body.max_inputs_per_reward > 50:
+    if body.all_benchmark_seeds or body.max_inputs_per_reward is None or body.max_inputs_per_reward > 50:
         raise HTTPException(status_code=422, detail="Use POST /rewards/builds for full or larger builds.")
     partition, settings = _prepare_build(body, request)
     _reserve_index()
@@ -215,15 +255,34 @@ def build_reward_datasets(
 
 @router.post("/builds", status_code=202)
 def start_reward_build(body: RewardDatasetRequest, request: Request) -> RewardBuildStatus:
+    if body.all_benchmark_seeds:
+        benchmark = load_benchmark()
+        seeds = benchmark.seeds
+        body = body.model_copy(update={
+            **benchmark.build,
+            "rewards": list(REWARD_IDS),
+            "model_id": benchmark.model_id,
+            "revision": benchmark.model_revision,
+            "seed": seeds[0],
+        })
+    else:
+        seeds = (body.seed,)
     partition, settings = _prepare_build(body, request)
     _reserve_index()
     try:
         require_indexed_partition(request, body.prepared_id, partition)
-        job = RewardBuildJob(attempted=dict.fromkeys(body.rewards, 0))
+        job = RewardBuildJob(attempted=dict.fromkeys(body.rewards, 0), seed=seeds[0], seeds=seeds)
+        initial = job.status()
 
         def run() -> None:
             try:
-                job.future.set_result(_build(body, request, partition, settings, job))
+                result = None
+                for index, seed in enumerate(seeds):
+                    job.check_cancelled()
+                    result = _build(body, request, partition, replace(settings, seed=seed), job)
+                    next_seed = seeds[index + 1] if index + 1 < len(seeds) else None
+                    job.finish_seed(seed, next_seed)
+                job.future.set_result(result)
             except RewardBuildCancelled:
                 job.future.set_result(None)
             except Exception as error:
@@ -241,7 +300,7 @@ def start_reward_build(body: RewardDatasetRequest, request: Request) -> RewardBu
     except BaseException:
         memory_index_lock.release()
         raise
-    return RewardBuildStatus(id=job.id, status="running", attempted=job.attempted)
+    return initial
 
 
 @router.get("/builds")
@@ -288,6 +347,13 @@ def _build(
         if job is not None:
             job.check_cancelled()
         model = language_model(request, model_id, revision)
+        uses_luna_teacher = "r1" in body.rewards and body.r1_teacher == "openai"
+        luna = (
+            OpenAILLMAdapter(os.environ["OPENAI_API_KEY"].strip())
+            if body.rewrite_generator == "openai" or uses_luna_teacher else None
+        )
+        rewrite_model = luna if body.rewrite_generator == "openai" else None
+        teacher_model = luna if uses_luna_teacher else None
         if job is not None:
             job.check_cancelled()
         datasets = BuildRewardDatasets(model, model, model, embedder, store).execute(
@@ -297,11 +363,15 @@ def _build(
             answer_max_tokens=body.answer_max_tokens,
             r2_prior_turns=body.r2_prior_turns,
             r3_max_tokens=body.r3_max_tokens,
+            rewrite_model=rewrite_model,
+            r1_teacher_model=teacher_model,
             report_progress=job.report if job is not None else None,
             check_cancelled=job.check_cancelled if job is not None else None,
         )
     except (HTTPException, RewardBuildCancelled):
         raise
+    except OpenAIRewriteError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except Exception as error:
@@ -317,6 +387,14 @@ def _build(
         "r3_max_tokens": body.r3_max_tokens,
     }
     checkpoint_revision = model.resolved_revision or revision
+    rewrite_generator = {
+        "provider": body.rewrite_generator,
+        "model_id": rewrite_model.model_id if rewrite_model is not None else model_id,
+    }
+    r1_teacher = {
+        "provider": body.r1_teacher,
+        "model_id": teacher_model.model_id if teacher_model is not None else model_id,
+    } if "r1" in body.rewards else None
     if job is not None:
         job.begin_saving()
     try:
@@ -338,6 +416,8 @@ def _build(
             "memory_format_version": MEMORY_FORMAT_VERSION,
             "reward_pipeline_version": REWARD_PIPELINE_VERSION,
             "rewrite_prompt_version": REWRITE_PROMPT_VERSION,
+            "rewrite_generator": rewrite_generator,
+            "r1_teacher": r1_teacher,
             "collection": store.collection_name,
             "settings": build_settings,
         })
@@ -357,6 +437,7 @@ def _build(
             skipped=summary["skipped"],
             tied_winners=summary["tied_winners"],
             kept_all_one_ties=summary["kept_all_one_ties"],
+            kept_single_rewrites=summary["kept_single_rewrites"],
             examples=[ExampleOut(**asdict(example)) for example in dataset.examples],
             outcomes=[OutcomeOut(**asdict(outcome)) for outcome in dataset.outcomes],
         ))
@@ -371,6 +452,8 @@ def _build(
         model_revision=checkpoint_revision,
         embedding_model=config.embedding_model,
         rewrite_prompt_version=REWRITE_PROMPT_VERSION,
+        rewrite_generator=rewrite_generator,
+        r1_teacher=r1_teacher,
         reward_pipeline_version=REWARD_PIPELINE_VERSION,
         settings=build_settings,
         results=results,

@@ -40,6 +40,8 @@ class BuildRewardDatasets:
         answer_max_tokens: int = 64,
         r2_prior_turns: int = 3,
         r3_max_tokens: int = 64,
+        rewrite_model: LLMPort | None = None,
+        r1_teacher_model: LLMPort | None = None,
         report_progress: Callable[[str, int], None] | None = None,
         check_cancelled: Callable[[], None] | None = None,
     ) -> dict[str, RewardDataset]:
@@ -63,10 +65,16 @@ class BuildRewardDatasets:
                 inputs[reward] = R0Builder().execute(train.conversations, train.qa)
             elif reward == "r1":
                 reader = AnswerQuestion(self._model, self._tokenizer, answer_max_tokens)
+                teacher = (
+                    interruptible(AnswerQuestion(r1_teacher_model, None, answer_max_tokens).execute)
+                    if r1_teacher_model is not None else None
+                )
                 questions = (
                     TrainingQuestion(qa.id, qa.conversation_id, qa.question) for qa in train.qa
                 )
-                inputs[reward] = R1Builder(interruptible(reader.execute), reader.fits).execute(
+                inputs[reward] = R1Builder(
+                    interruptible(reader.execute), reader.fits, teacher=teacher
+                ).execute(
                     train.conversations, questions
                 )
             elif reward == "r2":
@@ -79,7 +87,7 @@ class BuildRewardDatasets:
                 ).execute(train.conversations, seed=settings.seed)
 
         return BuildRewardDataset(
-            RewriteQuery(self._model),
+            RewriteQuery(self._model if rewrite_model is None else rewrite_model),
             RetrieveMemories(self._embedder, self._store),
             BuildContext(self._tokenizer.count_tokens),
             settings,

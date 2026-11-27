@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from time import monotonic, sleep
 
 from fastapi import FastAPI, HTTPException
@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 import torch
 from presentation import routes_reward_datasets as routes
 
+from application.ports.models import ContextWindowExceeded
 from application.use_cases.training.build_reward_dataset import RewardBuildSettings
 from application.use_cases.training.build_reward_datasets import BuildRewardDatasets
 from application.use_cases.training.manage_artifacts import SaveRewardDatasets
@@ -69,7 +70,7 @@ class RewardBuildTest(TestCase):
         rewrites = []
 
         def generate(prompt, **kwargs):
-            if prompt.startswith('Turn each input'):
+            if prompt.startswith('Rewrite the input as one standalone search query'):
                 query = 'good query' if len(rewrites) % 2 == 0 else 'bad query'
                 rewrites.append(query)
                 return query
@@ -121,6 +122,48 @@ class RewardBuildTest(TestCase):
         job.future.set_result(None)
         self.assertEqual(job.status().status, 'cancelled')
 
+    def test_single_rewrite_uses_remote_r1_teacher_and_local_retrieved_reader(self):
+        conversation = Conversation(
+            'c1', ('Alice',), (Session(1, datetime(2025, 1, 1), (
+                Turn('t1', 'Alice', 'Alice moved to Denver.'),
+            )),),
+        )
+        partition = DatasetPartition(
+            conversations=(conversation,),
+            qa=(QA('q1', 'c1', 'Where did Alice move?', 'single_hop', evidence_turn_ids=('t1',)),),
+        )
+        local = SimpleNamespace(
+            generate=Mock(return_value='Denver'),
+            prompt_fits=Mock(side_effect=lambda prompt, **_: 'Alice moved to Denver.' not in prompt),
+            count_tokens=lambda text: len(text.split()),
+        )
+        teacher = SimpleNamespace(generate=Mock(return_value='Denver'))
+        rewriter = SimpleNamespace(generate=Mock(return_value='Where did Alice move?'))
+        embedder = SimpleNamespace(embed_queries=lambda queries: [(1,)] * len(queries))
+        store = SimpleNamespace(search=lambda *args, **kwargs: [
+            SimpleNamespace(memory=SimpleNamespace(text='Denver', source_turn_ids=('t1',))),
+        ])
+        build = BuildRewardDatasets(local, local, local, embedder, store)
+
+        def run(keep_single):
+            return build.execute(
+                partition, ['r1'],
+                RewardBuildSettings(candidates=2, keep_single_rewrite=keep_single),
+                rewrite_model=rewriter, r1_teacher_model=teacher,
+            )['r1']
+
+        self.assertEqual(run(False).outcomes[0].skip_reason, 'too_few_distinct_rewrites')
+        teacher.generate.assert_not_called()
+        result = run(True)
+        self.assertEqual(result.summary()['kept_single_rewrites'], 1)
+        self.assertEqual(result.outcomes[0].winning_score, 1.0)
+        teacher.generate.assert_called_once()
+        local.generate.assert_called_once()
+        self.assertIn('Alice moved to Denver.', teacher.generate.call_args.args[0])
+        self.assertNotIn('Alice moved to Denver.', local.generate.call_args.args[0])
+        teacher.generate.side_effect = ContextWindowExceeded('Too long')
+        self.assertEqual(run(True).outcomes[0].skip_reason, 'full_history_too_long')
+
     def test_model_window_is_not_a_valid_retrieval_budget(self):
         with self.assertRaises(ValueError):
             RewardDatasetRequest(prepared_id='prepared', token_budget=32768)
@@ -132,9 +175,14 @@ class RewardBuildTest(TestCase):
             prepared_id="prepared", partition="train", conversation_count=1,
             qa_count=1, collection="test", model_id="test/model", model_revision=None,
             embedding_model="test/embedding", rewrite_prompt_version="1",
+            rewrite_generator={"provider": "local", "model_id": "test/model"},
             reward_pipeline_version=2, settings={}, results=[], elapsed_seconds=0,
         )
-        with TestClient(app) as client, patch.object(routes, "_prepare_build", return_value=(None, None)), patch.object(routes, "require_indexed_partition"):
+        with (
+            TestClient(app) as client,
+            patch.object(routes, "_prepare_build", return_value=(None, RewardBuildSettings())),
+            patch.object(routes, "require_indexed_partition"),
+        ):
             self.assertEqual(client.get("/rewards/builds").json(), {"job": None})
             active = RewardBuildJob(attempted={"r0": 7})
             app.state.reward_build_job = active
@@ -167,3 +215,21 @@ class RewardBuildTest(TestCase):
                         self.assertEqual(status.json()["detail"], "Test build failure")
                     else:
                         self.assertEqual(status.json()["result"]["prepared_id"], "prepared")
+
+            with patch.object(routes, "_build", return_value=response) as build:
+                started = client.post("/rewards/builds", json={
+                    "prepared_id": "prepared",
+                    "all_benchmark_seeds": True,
+                    "rewrite_generator": "openai",
+                })
+                self.assertEqual(started.status_code, 202, started.text)
+                initial = started.json()
+                self.assertEqual(initial["seeds"], [123, 456, 789])
+                job = app.state.reward_build_job
+                job.future.result(timeout=3)
+                self.assertEqual(job.status().completed_seeds, (123, 456, 789))
+                self.assertEqual([call.args[3].seed for call in build.call_args_list], [123, 456, 789])
+                for call in build.call_args_list:
+                    self.assertEqual(call.args[0].rewards, ["r0", "r1", "r2", "r3"])
+                    self.assertEqual(call.args[0].rewrite_generator, "openai")
+                    self.assertIsNone(call.args[0].max_inputs_per_reward)

@@ -99,6 +99,12 @@ function ArtifactEditor({
       </p>
       <p className={styles.facts}>
         {dataset?.provenance.model_id ?? run?.model_id ?? 'Model not recorded'}
+        {provenance?.rewrite_generator?.provider === 'openai' ? (
+          <span>Rewrite generator {provenance.rewrite_generator.model_id}</span>
+        ) : null}
+        {item.reward === 'r1' && provenance?.r1_teacher?.provider === 'openai' ? (
+          <span>Full-history teacher {provenance.r1_teacher.model_id}</span>
+        ) : null}
       </p>
       {sourceName ? <p className={styles.facts}>Source dataset: {sourceName}</p> : null}
       {item.notes ? <p className={styles.notes}>{item.notes}</p> : null}
@@ -126,6 +132,9 @@ function ArtifactEditor({
               <span>
                 {count(dataset.summary.kept_all_one_ties ?? 0)} all-one ties kept
               </span>
+            ) : null}
+            {dataset?.provenance.settings?.keep_single_rewrite ? (
+              <span>{count(dataset.summary.kept_single_rewrites ?? 0)} single rewrites kept</span>
             ) : null}
           </p>
           {run?.error ? <Callout tone="error">{run.error}</Callout> : null}

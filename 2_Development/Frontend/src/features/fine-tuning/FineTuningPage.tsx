@@ -63,7 +63,7 @@ export function FineTuningPage() {
         }
       : undefined
   const usePreset = preset && params.get('settings') !== 'custom' ? preset : undefined
-  const fullBuild = benchmark && isFrozenRewardBuild(selected?.provenance, benchmark)
+  const fullBuild = benchmark && isFrozenRewardBuild(selected?.provenance, benchmark, selected?.reward)
   const currentSettings = usePreset?.settings ?? fineTune.settings
   const fallback = {
     modelId: selected?.provenance.model_id ?? '',

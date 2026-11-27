@@ -20,7 +20,7 @@
     "memory_format_version": 1
   },
   "reward_pipeline_version": 2,
-  "rewrite_prompt_version": "1",
+  "rewrite_prompt_version": "3",
   "top_k": 20,
   "token_budgets": [128, 256, 512, 1024, 2048],
   "build": {

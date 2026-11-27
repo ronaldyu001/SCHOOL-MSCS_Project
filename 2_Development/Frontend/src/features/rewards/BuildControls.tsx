@@ -5,6 +5,7 @@ import {
   Disclosure,
   PanelBody,
   PanelSection,
+  SelectField,
   TextField,
   type CheckOption,
 } from '@/components/ui'
@@ -40,8 +41,15 @@ export function BuildControls({
     needsQuestions && counts !== undefined && counts.qa_count === 0
   const limit = settings.maxInputsPerReward
   const validLimit = limit === null || (Number.isInteger(limit) && limit >= 1)
+  const usesLuna = settings.rewriteGenerator === 'openai'
+  const maxTemperature = usesLuna ? 2 : 5
+  const validTemperature = settings.temperature > 0 && settings.temperature <= maxTemperature
   const ready =
-    handle !== null && settings.rewards.length > 0 && validLimit && !missingQuestions
+    handle !== null &&
+    settings.rewards.length > 0 &&
+    validLimit &&
+    validTemperature &&
+    !missingQuestions
 
   return (
     <>
@@ -80,6 +88,38 @@ export function BuildControls({
               disabled={busy}
               onChange={(event) => update('candidates', Number(event.target.value))}
             />
+            <SelectField
+              label="Rewrite generator"
+              value={settings.rewriteGenerator}
+              disabled={busy}
+              hint={
+                usesLuna ? 'Sends rewrite inputs to OpenAI. Requires a backend API key.' : undefined
+              }
+              onChange={(event) =>
+                update('rewriteGenerator', event.target.value === 'openai' ? 'openai' : 'local')
+              }
+            >
+              <option value="local">Local model</option>
+              <option value="openai">GPT-6 Luna (OpenAI API)</option>
+            </SelectField>
+            {settings.rewards.includes('r1') ? (
+              <SelectField
+                label="R1 full-history teacher"
+                value={settings.r1Teacher}
+                disabled={busy}
+                hint={
+                  settings.r1Teacher === 'openai'
+                    ? 'Sends the entire training conversation to OpenAI for each teacher answer.'
+                    : undefined
+                }
+                onChange={(event) =>
+                  update('r1Teacher', event.target.value === 'openai' ? 'openai' : 'local')
+                }
+              >
+                <option value="local">Local model</option>
+                <option value="openai">GPT-6 Luna (OpenAI API)</option>
+              </SelectField>
+            ) : null}
           </div>
 
           {chooseRewards ? (
@@ -92,20 +132,21 @@ export function BuildControls({
             />
           ) : null}
 
-          {settings.rewards.includes('r0') ? (
-            <CheckGroup
-              legend="R0 ties"
-              options={[
-                {
-                  value: 'keep',
-                  label: 'Keep one rewrite when every candidate scores 1',
-                },
-              ]}
-              selected={settings.keepAllOneTies ? ['keep'] : []}
-              disabled={busy}
-              onToggle={() => update('keepAllOneTies', !settings.keepAllOneTies)}
-            />
-          ) : null}
+          <CheckGroup
+            legend="Sample retention"
+            options={[
+              ...(settings.rewards.includes('r0')
+                ? [{ value: 'keepAllOneTies' as const, label: 'Keep one rewrite when every R0 candidate scores 1' }]
+                : []),
+              { value: 'keepSingleRewrite', label: 'Keep one rewrite when candidates are duplicates' },
+            ]}
+            selected={[
+              ...(settings.keepAllOneTies ? ['keepAllOneTies' as const] : []),
+              ...(settings.keepSingleRewrite ? ['keepSingleRewrite' as const] : []),
+            ]}
+            disabled={busy}
+            onToggle={(key) => update(key, !settings[key])}
+          />
 
           <Disclosure summary="Options">
             <div className={styles.grid}>
@@ -113,10 +154,13 @@ export function BuildControls({
                 label="Variety"
                 type="number"
                 min={0.1}
-                max={5}
+                max={maxTemperature}
                 step={0.1}
                 value={settings.temperature}
                 disabled={busy}
+                error={
+                  validTemperature ? undefined : `Enter a value above 0 and up to ${maxTemperature}.`
+                }
                 onChange={(event) => update('temperature', Number(event.target.value))}
               />
               <TextField

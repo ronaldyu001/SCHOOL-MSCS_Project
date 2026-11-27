@@ -5,17 +5,21 @@ from hashlib import sha256
 from application.ports.models import LLMPort
 
 
-REWRITE_PROMPT_VERSION = "1"
-_REWRITE_TEMPLATE = """Turn each input into one short query for searching conversation memories. Write only the query.
+REWRITE_PROMPT_VERSION = "3"
+_REWRITE_TEMPLATE = """Rewrite the input as one standalone search query for conversation memories.
+
+Keep the intent and all details that affect the answer, including names, timing, and relationships.
+Resolve references using the input. For dialogue alone, query the event or fact earlier memories could clarify.
+Use precise search terms grounded in the input. Output only the query on one line.
 
 Input:
-What hobby did Alice start after moving?
-Query: Alice new hobby after moving
-
-Input:
-Sam: I just bought tickets.
+Sam: I just bought tickets for the jazz festival.
 Lee: Which show did you pick?
-Query: Sam concert tickets show
+Query: Which show at the jazz festival did Sam buy tickets for?
+
+Input:
+Did Gina finish her fashion-styling video before she opened her store?
+Query: Which came first, Gina finishing her fashion-styling video or Gina opening her store?
 
 Input:
 {text}

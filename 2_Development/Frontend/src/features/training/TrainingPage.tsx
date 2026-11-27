@@ -161,6 +161,9 @@ export function TrainingPage() {
 
       {state.status === 'running' ? (
         <Callout tone="info" icon="refresh">
+          {build.seeds.length > 1 && build.seed != null
+            ? `Seed ${build.seed} (${build.completedSeeds.length + 1} of ${build.seeds.length}). `
+            : null}
           {build.saving
             ? 'Saving reward datasets.'
             : build.stopping
@@ -182,7 +185,11 @@ export function TrainingPage() {
       ) : null}
 
       {state.status === 'done' && result === null ? (
-        <Callout tone="info">Build stopped. No dataset was saved.</Callout>
+        <Callout tone="info">
+          {build.completedSeeds.length
+            ? `Build stopped. Datasets saved for seeds ${build.completedSeeds.join(', ')}.`
+            : 'Build stopped. No dataset was saved.'}
+        </Callout>
       ) : null}
 
       {state.status === 'failed' ? (
@@ -200,6 +207,13 @@ export function TrainingPage() {
 
       {result && totals ? (
         <>
+          {build.seeds.length > 1 && build.completedSeeds.length === build.seeds.length ? (
+            <Callout tone="info">
+              Saved {count(build.completedSeeds.length * result.results.length)} datasets for
+              seeds {build.completedSeeds.join(', ')}. The results below show seed {build.seed}.{' '}
+              <Link to="/artifacts">View all saved datasets</Link>
+            </Callout>
+          ) : null}
           <Panel>
             <PanelHeader
               titleAs="h3"

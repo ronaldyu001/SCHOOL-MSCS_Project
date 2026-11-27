@@ -26,6 +26,7 @@ class InputOutcome:
     top_ties: int = 0
     tied_score: float | None = None
     kept_all_one_tie: bool = False
+    kept_single_rewrite: bool = False
 
 
 @dataclass
@@ -42,6 +43,7 @@ class RewardDataset:
             )),
             "tied_winners": sum(outcome.top_ties > 1 for outcome in self.outcomes),
             "kept_all_one_ties": sum(outcome.kept_all_one_tie for outcome in self.outcomes),
+            "kept_single_rewrites": sum(outcome.kept_single_rewrite for outcome in self.outcomes),
         }
 
 
@@ -55,6 +57,7 @@ class RewardBuildSettings:
     token_budget: int = 512
     max_inputs_per_reward: int | None = None
     keep_all_one_ties: bool = False
+    keep_single_rewrite: bool = False
 
     def __post_init__(self) -> None:
         if self.candidates < 2:
@@ -148,7 +151,8 @@ class BuildRewardDataset:
         if self._check_cancelled is not None:
             self._check_cancelled()
         count = len(rewrites.queries)
-        if count < 2:
+        keep_single = count == 1 and settings.keep_single_rewrite
+        if count < 2 and not keep_single:
             for reward, item in group:
                 datasets[reward].outcomes.append(
                     InputOutcome(item.input_id, count, "too_few_distinct_rewrites")
@@ -169,6 +173,8 @@ class BuildRewardDataset:
                 dataset.outcomes.append(InputOutcome(item.input_id, count, error.reason))
                 continue
             winner = select_rewrite(scores)
+            if keep_single:
+                winner = (0, scores[0])
             tied_score = scores[0] if winner is None and len(scores) > 1 else None
             kept_all_one_tie = (
                 reward == "r0" and settings.keep_all_one_ties and tied_score == 1.0
@@ -185,4 +191,5 @@ class BuildRewardDataset:
             dataset.outcomes.append(InputOutcome(
                 item.input_id, count, winning_score=score, top_ties=scores.count(score),
                 tied_score=tied_score, kept_all_one_tie=kept_all_one_tie,
+                kept_single_rewrite=keep_single,
             ))

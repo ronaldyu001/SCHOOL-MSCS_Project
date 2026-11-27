@@ -43,7 +43,7 @@ export function eligibleAdapter(
   const { runtime, metrics, settings } = run
   const peakMemory = metrics.peak_device_memory_bytes
   return (
-    isFrozenRewardBuild(provenance, benchmark) &&
+    isFrozenRewardBuild(provenance, benchmark, run.reward) &&
     Object.entries(benchmark.training).every(
       ([key, value]) => settings[key as keyof typeof settings] === value,
     ) &&

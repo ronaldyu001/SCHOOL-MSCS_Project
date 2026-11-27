@@ -12,14 +12,18 @@ import {
   type RewardDatasetResponse,
   type RewardDef,
   type RewardId,
+  type RewriteGenerator,
 } from '@/lib/api'
 import { describeError, resultOf, useAsyncRun } from '@/lib/useAsyncRun'
 import type { ShellData } from '@/app/shell-context'
 
 export type BuildSettings = {
   rewards: RewardId[]
+  rewriteGenerator: RewriteGenerator
+  r1Teacher: RewriteGenerator
   maxInputsPerReward: number | null
   keepAllOneTies: boolean
+  keepSingleRewrite: boolean
   seed: number
   candidates: number
   temperature: number
@@ -34,8 +38,11 @@ export type BuildSettings = {
 /** Start with a small pilot. Clearing the input limit uses the full train split. */
 export const BUILD_DEFAULTS: BuildSettings = {
   rewards: [...REWARD_IDS],
+  rewriteGenerator: 'local',
+  r1Teacher: 'local',
   maxInputsPerReward: 2,
   keepAllOneTies: false,
+  keepSingleRewrite: false,
   seed: 123,
   candidates: 4,
   temperature: 0.7,
@@ -203,9 +210,12 @@ export function useRewardBuild(
       return buildRewardDatasets(
         preset ?? {
           preparedId,
+          rewriteGenerator: current.rewriteGenerator,
+          r1Teacher: current.r1Teacher,
           rewards: current.rewards,
           maxInputsPerReward: current.maxInputsPerReward,
           keepAllOneTies: current.rewards.includes('r0') && current.keepAllOneTies,
+          keepSingleRewrite: current.keepSingleRewrite,
           seed: current.seed,
           candidates: current.candidates,
           temperature: current.temperature,
@@ -268,6 +278,9 @@ export function useRewardBuild(
     saving: job?.status === 'saving',
     busy: build.state.status === 'running',
     progress: job?.attempted ?? {},
+    seed: job?.seed,
+    seeds: job?.seeds ?? [],
+    completedSeeds: job?.completed_seeds ?? [],
     estimate: estimateCalls(settings, handle?.partitions.train),
   }
 }

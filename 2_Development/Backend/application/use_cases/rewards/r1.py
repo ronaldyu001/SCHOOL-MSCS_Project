@@ -3,6 +3,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from functools import cache
 
+from application.ports.models import ContextWindowExceeded
 from application.use_cases.generation.answer_question import answer_abstained
 from application.use_cases.retrieval import BuiltContext
 from domain.entities import Conversation
@@ -22,9 +23,12 @@ class R1Builder:
         self,
         answer: Callable[[str, str], str],
         fits_answer_context: Callable[[str, str], bool],
+        *,
+        teacher: Callable[[str, str], str] | None = None,
     ) -> None:
         self._answer = answer
         self._fits = fits_answer_context
+        self._teacher = teacher
 
     def execute(
         self,
@@ -56,9 +60,13 @@ class R1Builder:
     def _make_scorer(self, question: str, history: str) -> Callable[[BuiltContext], float]:
         @cache
         def teacher_answer() -> tuple[Counter[str], int]:
-            if not self._fits(question, history):
+            if self._teacher is None and not self._fits(question, history):
                 raise RewardInputSkipped("full_history_too_long")
-            answer = self._answer(question, history)
+            teacher = self._answer if self._teacher is None else self._teacher
+            try:
+                answer = teacher(question, history)
+            except ContextWindowExceeded as error:
+                raise RewardInputSkipped("full_history_too_long") from error
             if answer_abstained(answer):
                 raise RewardInputSkipped("teacher_abstained")
             tokens = _normalized_tokens(answer)

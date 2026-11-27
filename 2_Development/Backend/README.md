@@ -211,6 +211,28 @@ fields. Set `max_inputs_per_reward` to null to use the entire training partition
 or pass a positive count. Poll `GET /rewards/builds/{id}` for the number of
 attempted inputs per reward and the completed result. The backend keeps the latest
 job in memory and saves completed reward datasets in `/artifacts/datasets`.
+
+For a custom build with GPT-6 Luna, set `OPENAI_API_KEY` in `Backend/.env`
+for the native backend, or export it in the shell that starts Docker Compose.
+Restart or recreate the backend so it loads the key. In **Training → Custom**,
+select **GPT-6 Luna (OpenAI API)** under **Rewrite generator**. This sends the
+rewrite prompt and its input to OpenAI. Reward scoring, retrieval, and
+fine-tuning use the existing local pipeline. Build seeds still control local
+work, and Luna sampling can vary between runs. The saved dataset records its
+rewrite generator. The official benchmark uses the local generator.
+
+In **Training → Benchmark**, choose the full training split and select
+**Build all 12 datasets** to run the configured seeds sequentially on the
+backend. The job saves each seed's four datasets before starting the next
+seed. Choose the local generator for official runs or GPT-6 Luna for the
+experimental comparison.
+
+Select **GPT-6 Luna (OpenAI API)** under **R1 full-history teacher** to send
+the entire training conversation and question to Luna for the reference
+answer. The local model still answers from retrieved memories. Full-history
+teacher calls add API input usage. With **Keep one rewrite when candidates
+are duplicates**, the scorer can keep the only distinct nonblank candidate
+and record its score, including a zero. Both options are experimental.
 Set `keep_all_one_ties` to true (CLI `--keep-all-one-ties`) to keep one R0 rewrite
 when every candidate has evidence recall 1.0. Other all-tied inputs are skipped.
 New diagnostics record the shared score and identify rewrites kept by this option.

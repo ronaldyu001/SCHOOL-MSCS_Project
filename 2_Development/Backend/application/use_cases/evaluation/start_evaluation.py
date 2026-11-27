@@ -109,6 +109,14 @@ class StartEvaluation:
     @staticmethod
     def _check_frozen_inputs(run: dict, provenance: dict, benchmark: BenchmarkConfig, seed: int) -> None:
         run_id = run["id"]
+        generator = provenance.get("rewrite_generator", {})
+        if generator.get("provider", "local") != "local":
+            raise ValueError(f"{run_id} used a different benchmark rewrite generator.")
+        teacher = provenance.get("r1_teacher") or {}
+        if run["reward"] == "r1" and teacher.get("provider", "local") != "local":
+            raise ValueError(f"{run_id} used a different benchmark R1 teacher.")
+        if provenance.get("settings", {}).get("keep_single_rewrite"):
+            raise ValueError(f"{run_id} used a different benchmark candidate selection rule.")
         expected = {**benchmark.embedding, "categories": list(benchmark.categories),
                     "model_id": benchmark.model_id, "model_revision": benchmark.model_revision,
                     "reward_pipeline_version": benchmark.reward_pipeline_version,

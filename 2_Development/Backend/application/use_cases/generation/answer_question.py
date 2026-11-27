@@ -22,7 +22,7 @@ class AnswerQuestion:
     def __init__(
         self,
         model: LLMPort,
-        tokenizer: TokenizerPort,
+        tokenizer: TokenizerPort | None,
         max_new_tokens: int = 64,
     ) -> None:
         self._model = model
@@ -30,6 +30,8 @@ class AnswerQuestion:
         self._max_new_tokens = max_new_tokens
 
     def fits(self, question: str, context: str) -> bool:
+        if self._tokenizer is None:
+            return True
         prompt = _ANSWER_TEMPLATE.format(question=question, context=context)
         return self._tokenizer.prompt_fits(prompt, max_new_tokens=self._max_new_tokens)
 
