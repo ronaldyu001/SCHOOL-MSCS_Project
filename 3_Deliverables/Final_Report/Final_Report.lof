@@ -1,0 +1,18 @@
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Component architecture, part 1: console and application services}}{13}{figure.caption.3}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Component architecture, part 2: research workflows and services}}{14}{figure.caption.4}%
+\contentsline {figure}{\numberline {3.3}{\ignorespaces The four reward signals}}{18}{figure.caption.5}%
+\contentsline {figure}{\numberline {3.4}{\ignorespaces The candidate factory and training loop}}{22}{figure.caption.7}%
+\contentsline {figure}{\numberline {3.5}{\ignorespaces Module structure, part 1: the frontend}}{25}{figure.caption.8}%
+\contentsline {figure}{\numberline {3.6}{\ignorespaces Module structure, part 2: the backend layers}}{26}{figure.caption.9}%
+\contentsline {figure}{\numberline {3.7}{\ignorespaces Module structure, part 3: domain and persistence}}{27}{figure.caption.10}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {4.1}{\ignorespaces Evidence recall against token budget}}{37}{figure.caption.18}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces Recall at the 512-token budget by category}}{38}{figure.caption.20}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }

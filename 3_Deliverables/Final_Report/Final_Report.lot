@@ -1,0 +1,24 @@
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {2.1}{\ignorespaces Position relative to the closest prior work}}{11}{table.caption.2}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {3.1}{\ignorespaces Inputs consumed by each reward}}{21}{table.caption.6}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {4.1}{\ignorespaces Corpus and split statistics}}{30}{table.caption.11}%
+\contentsline {table}{\numberline {4.2}{\ignorespaces Eligible questions by reasoning category}}{31}{table.caption.12}%
+\contentsline {table}{\numberline {4.3}{\ignorespaces The frozen configuration}}{32}{table.caption.13}%
+\contentsline {table}{\numberline {4.4}{\ignorespaces The comparison ladder and diagnostic series}}{32}{table.caption.14}%
+\contentsline {table}{\numberline {4.5}{\ignorespaces Validation headroom at each token budget}}{36}{table.caption.15}%
+\contentsline {table}{\numberline {4.6}{\ignorespaces Reward dataset yields on the training partition}}{36}{table.caption.16}%
+\contentsline {table}{\numberline {4.7}{\ignorespaces Mean evidence recall on the held-out test split}}{37}{table.caption.17}%
+\contentsline {table}{\numberline {4.8}{\ignorespaces Recall at the 512-token budget by category}}{38}{table.caption.19}%
+\contentsline {table}{\numberline {4.9}{\ignorespaces Fraction of the supervised ceiling's gain recovered}}{39}{table.caption.21}%
+\contentsline {table}{\numberline {4.10}{\ignorespaces Secondary metrics at the 512-token budget}}{39}{table.caption.22}%
+\contentsline {table}{\numberline {4.11}{\ignorespaces Pairwise similarity of the label-free rewrites}}{40}{table.caption.23}%
+\contentsline {table}{\numberline {4.12}{\ignorespaces Zero-recall overlap at the 512-token budget}}{40}{table.caption.24}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {C.1}{\ignorespaces HTTP interface of the harness backend}}{57}{table.caption.26}%
+\addvspace {10\p@ }
