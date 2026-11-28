@@ -58,7 +58,7 @@ export function TrainingPage() {
     [catalogue],
   )
 
-  const { state, result } = build
+  const { state, result, configuration } = build
   const nextDataset = result?.results.find((reward) => reward.kept > 0)
 
   const totals = result
@@ -92,28 +92,70 @@ export function TrainingPage() {
         </Callout>
       ) : null}
 
-      {!benchmarkMode ? <ModelPanel model={model} busy={build.busy} /> : null}
+      {!benchmarkMode && !build.busy ? <ModelPanel model={model} busy={build.busy} /> : null}
 
       <RewardCatalogue catalogue={catalogue} />
 
       <Panel>
         <PanelHeader
-          title="Build it"
-          description="Each scorer produces a saved dataset of rewrites."
+          title={build.busy ? 'Active build' : 'Build it'}
+          description={build.busy ? undefined : 'Each scorer produces a saved dataset of rewrites.'}
         />
-        <PanelSection>
-          <OptionChips
-            legend="Build settings"
-            options={[
-              { value: 'benchmark', label: 'Benchmark' },
-              { value: 'custom', label: 'Custom' },
-            ]}
-            selected={benchmarkMode ? 'benchmark' : 'custom'}
-            disabled={build.busy}
-            onPick={(mode) => setParams({ mode }, { replace: true })}
-          />
-        </PanelSection>
-        {benchmarkMode ? (
+        {build.busy ? (
+          <PanelBody>
+            {configuration ? (
+              <>
+                <p>
+                  {configuration.max_inputs_per_reward === null
+                    ? 'Full training split'
+                    : `Capped training build · ${count(configuration.max_inputs_per_reward)} inputs per reward`}
+                  {build.seeds.length === 1
+                    ? ` · Seed ${build.seeds[0]}`
+                    : build.seeds.length > 1
+                      ? ` · Seeds ${build.seeds.join(', ')}`
+                      : ''}
+                </p>
+                <p>
+                  Rewrite generator{' '}
+                  <strong>
+                    {configuration.rewrite_generator === 'openai' ? 'GPT-6 Luna' : 'Local model'}
+                  </strong>
+                  {configuration.r1_teacher ? (
+                    <>
+                      {' · R1 teacher '}
+                      <strong>
+                        {configuration.r1_teacher === 'openai' ? 'GPT-6 Luna' : 'Local model'}
+                      </strong>
+                    </>
+                  ) : null}
+                </p>
+                {configuration.keep_tied_rewrite ? <p>Keeps one rewrite when all scores tie.</p> : null}
+                {configuration.keep_single_rewrite ? <p>Keeps single distinct rewrites.</p> : null}
+                {configuration.keep_all_one_ties ? <p>Keeps one rewrite for perfect R0 ties.</p> : null}
+              </>
+            ) : (
+              <p className={styles.hint}>
+                The active build’s settings haven’t been reported by the backend.
+              </p>
+            )}
+            <Button disabled={!build.canStop} onClick={() => void build.stop()}>
+              Stop build
+            </Button>
+          </PanelBody>
+        ) : (
+          <PanelSection>
+            <OptionChips
+              legend="Build settings"
+              options={[
+                { value: 'benchmark', label: 'Benchmark' },
+                { value: 'custom', label: 'Custom' },
+              ]}
+              selected={benchmarkMode ? 'benchmark' : 'custom'}
+              onPick={(mode) => setParams({ mode }, { replace: true })}
+            />
+          </PanelSection>
+        )}
+        {build.busy ? null : benchmarkMode ? (
           benchmark ? (
             <BenchmarkBuildControls
               benchmark={benchmark}

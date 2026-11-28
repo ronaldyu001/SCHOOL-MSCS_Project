@@ -4,6 +4,7 @@ import {
   Button,
   ButtonLink,
   Callout,
+  CheckGroup,
   Disclosure,
   OptionChips,
   Panel,
@@ -15,7 +16,13 @@ import {
 } from '@/components/ui'
 import { useShell } from '@/app/shell-context'
 import { hasBenchmarkSource, isFrozenRewardBuild } from '@/features/pipeline/benchmark'
-import { TRAINING_DEFAULTS, TRAINING_LIMITS, type TrainingSettings } from '@/lib/api'
+import {
+  REWARD_IDS,
+  TRAINING_DEFAULTS,
+  TRAINING_LIMITS,
+  type SavedRewardDataset,
+  type TrainingSettings,
+} from '@/lib/api'
 import { count } from '@/lib/format'
 import { RunProgress } from './RunProgress'
 import { benchmarkTrainingSettings, invalidSettings } from './useFineTune'
@@ -33,6 +40,21 @@ const KNOBS: { key: keyof TrainingSettings; label: string; hint?: string }[] = [
   { key: 'seed', label: 'Seed' },
 ]
 
+function datasetLabel(dataset: SavedRewardDataset) {
+  const { seed, max_inputs_per_reward: limit } = dataset.provenance.settings ?? {}
+  const generator = dataset.provenance.rewrite_generator?.model_id
+  return [
+    dataset.name,
+    seed === undefined ? null : `Seed ${seed}`,
+    limit === null ? 'Full split' : limit === undefined ? null : `Cap ${count(limit)}`,
+    generator,
+    `${count(dataset.row_count)} rows`,
+    new Date(dataset.created_at).toLocaleString(),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
 export function FineTuningPage() {
   const { artifacts, fineTune, health, evaluation, model, rewardBuild } = useShell()
   const [params, setParams] = useSearchParams()
@@ -47,15 +69,31 @@ export function FineTuningPage() {
   const selected =
     datasets.find((item) => item.id === params.get('dataset')) ?? datasets[0]
   const run = artifacts.active ?? artifacts.runs[0]
+  const { rewardSelection, setRewardSelection } = fineTune
+  const allRewards = rewardSelection !== null
+  const rewardDatasets = REWARD_IDS.flatMap((reward) => {
+    const item = datasets.find(
+      (dataset) =>
+        dataset.reward === reward && dataset.id === rewardSelection?.[reward],
+    )
+    return item ? [item] : []
+  })
+  const trainingDatasets = allRewards ? rewardDatasets : selected ? [selected] : []
+  const source = trainingDatasets[0]
+  const enoughDatasets =
+    trainingDatasets.length === (allRewards ? REWARD_IDS.length : 1)
 
   const benchmark = evaluation.benchmark
-  const seed = selected?.provenance.settings?.seed
+  const seed = source?.provenance.settings?.seed
   const preset =
     benchmark &&
-    selected &&
     seed !== undefined &&
     benchmark.seeds.includes(seed) &&
-    hasBenchmarkSource(selected.provenance, benchmark)
+    trainingDatasets.every(
+      (dataset) =>
+        dataset.provenance.settings?.seed === seed &&
+        hasBenchmarkSource(dataset.provenance, benchmark),
+    )
       ? {
           modelId: benchmark.model_id,
           revision: benchmark.model_revision,
@@ -63,15 +101,24 @@ export function FineTuningPage() {
         }
       : undefined
   const usePreset = preset && params.get('settings') !== 'custom' ? preset : undefined
-  const fullBuild = benchmark && isFrozenRewardBuild(selected?.provenance, benchmark, selected?.reward)
+  const fullBuild =
+    benchmark &&
+    enoughDatasets &&
+    trainingDatasets.every((dataset) =>
+      isFrozenRewardBuild(dataset.provenance, benchmark, dataset.reward),
+    )
   const currentSettings = usePreset?.settings ?? fineTune.settings
   const fallback = {
-    modelId: selected?.provenance.model_id ?? '',
-    revision: selected?.provenance.model_revision ?? '',
+    modelId: source?.provenance.model_id ?? '',
+    revision: source?.provenance.model_revision ?? '',
   }
   const chosenModel =
     usePreset?.modelId ?? (fineTune.modelId.trim() || fallback.modelId)
-  const { submitting } = fineTune
+  const chosenRevision =
+    usePreset?.revision ??
+    (fineTune.revision.trim() ||
+      (chosenModel === fallback.modelId ? fallback.revision : ''))
+  const { submitting, queue } = fineTune
   const problems = usePreset ? invalidSettings(currentSettings) : fineTune.problems
   // One run at a time: the backend holds a single training worker.
   const running = artifacts.active !== undefined
@@ -110,7 +157,7 @@ export function FineTuningPage() {
       <Panel>
         <PanelHeader
           title="Start a run"
-          description="Pick a dataset and train. Defaults come from the backend's configuration."
+          description="Train on one saved dataset or select one for each reward."
           aside={
             <ButtonLink size="sm" variant="ghost" to="/artifacts" icon="layers">
               Artifacts
@@ -120,37 +167,93 @@ export function FineTuningPage() {
 
         <PanelSection>
           <div className={styles.form}>
-            <SelectField
-              label="Saved dataset"
-              value={selected?.id ?? ''}
+            <CheckGroup
+              legend="Training scope"
+              options={[{ value: 'all', label: 'Fine-tune all four rewards' }]}
+              selected={allRewards ? ['all'] : []}
               disabled={busy}
-              hint={
-                selected
-                  ? `${count(selected.row_count)} kept rewrites from ${selected.reward.toUpperCase()}.`
-                  : undefined
-              }
-              onChange={(event) =>
-                setParams(
-                  (current) => {
-                    const next = new URLSearchParams(current)
-                    next.set('dataset', event.target.value)
-                    return next
-                  },
-                  { replace: true },
+              onToggle={() =>
+                setRewardSelection(
+                  allRewards
+                    ? null
+                    : Object.fromEntries(
+                        datasets
+                          .filter((item) => item.build_id === selected?.build_id)
+                          .map((item) => [item.reward, item.id]),
+                      ),
                 )
               }
-            >
-              {datasets.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} · {item.reward.toUpperCase()}
-                  {item.provenance.settings?.seed !== undefined
-                    ? ` · Seed ${item.provenance.settings.seed}`
-                    : ''}
-                  {' · '}
-                  {count(item.row_count)} rows
-                </option>
-              ))}
-            </SelectField>
+            />
+            {allRewards ? (
+              <div className={styles.rewardDatasets}>
+                {REWARD_IDS.map((reward) => {
+                  const options = datasets.filter(
+                    (dataset) => dataset.reward === reward,
+                  )
+                  const chosen = options.find(
+                    (dataset) => dataset.id === rewardSelection[reward],
+                  )
+                  return (
+                    <SelectField
+                      key={reward}
+                      label={`${reward.toUpperCase()} dataset`}
+                      value={chosen?.id ?? ''}
+                      disabled={busy || options.length === 0}
+                      hint={
+                        options.length === 0
+                          ? 'No saved dataset with training rows.'
+                          : undefined
+                      }
+                      onChange={(event) => {
+                        const id = event.target.value
+                        setRewardSelection((current) =>
+                          current === null ? null : { ...current, [reward]: id },
+                        )
+                      }}
+                    >
+                      <option value="">Choose a dataset</option>
+                      {options.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {datasetLabel(item)}
+                        </option>
+                      ))}
+                    </SelectField>
+                  )
+                })}
+              </div>
+            ) : (
+              <SelectField
+                label="Saved dataset"
+                value={selected?.id ?? ''}
+                disabled={busy}
+                hint={
+                  selected
+                    ? `${count(selected.row_count)} kept rewrites from ${selected.reward.toUpperCase()}.`
+                    : undefined
+                }
+                onChange={(event) =>
+                  setParams(
+                    (current) => {
+                      const next = new URLSearchParams(current)
+                      next.set('dataset', event.target.value)
+                      return next
+                    },
+                    { replace: true },
+                  )
+                }
+              >
+                {datasets.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} · {item.reward.toUpperCase()}
+                    {item.provenance.settings?.seed !== undefined
+                      ? ` · Seed ${item.provenance.settings.seed}`
+                      : ''}
+                    {' · '}
+                    {count(item.row_count)} rows
+                  </option>
+                ))}
+              </SelectField>
+            )}
 
             {preset ? (
               <OptionChips
@@ -173,7 +276,7 @@ export function FineTuningPage() {
                 }
                 hint={
                   usePreset
-                    ? `Uses seed ${seed} from the saved dataset. ${
+                    ? `Uses seed ${seed} from the selected ${allRewards ? 'datasets' : 'dataset'}. ${
                         fullBuild
                           ? 'Official results require matching CUDA training runs for all four rewards and every benchmark seed.'
                           : 'This dataset can be used for a validation pilot.'
@@ -197,7 +300,7 @@ export function FineTuningPage() {
                   usePreset
                     ? undefined
                     : fallback.modelId
-                      ? `Blank trains ${fallback.modelId}, which wrote this dataset.`
+                      ? `Blank uses ${fallback.modelId} as the base model.`
                       : 'Blank uses the backend default.'
                 }
               />
@@ -208,9 +311,7 @@ export function FineTuningPage() {
                 spellCheck={false}
                 autoComplete="off"
                 disabled={busy || Boolean(usePreset)}
-                placeholder={
-                  (chosenModel === fallback.modelId && fallback.revision) || 'Latest'
-                }
+                placeholder={chosenRevision || 'Latest'}
                 onChange={(event) => fineTune.setRevision(event.target.value)}
               />
               <TextField
@@ -259,14 +360,39 @@ export function FineTuningPage() {
 
         <PanelBody>
           {fineTune.state.status === 'failed' ? (
-            <Callout tone="error" title="Couldn't start the run" role="alert">
+            <Callout
+              tone="error"
+              title={queue ? 'Fine-tuning sequence stopped' : "Couldn't start the run"}
+              role="alert"
+            >
               <p>{fineTune.state.error}</p>
+              {queue && queue.completed > 0 ? (
+                <p>
+                  {queue.completed} of {queue.total} adapters were saved.
+                </p>
+              ) : null}
             </Callout>
           ) : null}
 
-          {running ? (
+          {queue && submitting ? (
+            <Callout tone="info" icon="refresh">
+              Training {queue.reward.toUpperCase()} · {queue.completed} of {queue.total}{' '}
+              adapters saved. Keep the app open until all four finish.
+            </Callout>
+          ) : running ? (
             <Callout tone="info" icon="refresh">
               A run is already training. The backend takes one at a time.
+            </Callout>
+          ) : null}
+
+          {queue &&
+          fineTune.state.status === 'done' &&
+          queue.completed === queue.total ? (
+            <Callout tone="info">
+              All four adapters were saved.{' '}
+              <ButtonLink variant="ghost" size="sm" to="/artifacts">
+                View artifacts
+              </ButtonLink>
             </Callout>
           ) : null}
 
@@ -287,22 +413,38 @@ export function FineTuningPage() {
               variant="primary"
               icon="arrow"
               busy={submitting}
-              disabled={busy || blocked || !selected || problems.size > 0}
-              onClick={() =>
-                void fineTune.start(selected?.id ?? '', fallback, usePreset)
-              }
+              disabled={busy || blocked || !enoughDatasets || problems.size > 0}
+              onClick={() => {
+                if (!enoughDatasets) return
+                if (allRewards) {
+                  void fineTune.startAllRewards(rewardDatasets, {
+                    modelId: chosenModel,
+                    revision: chosenRevision,
+                    settings: currentSettings,
+                  })
+                } else if (selected) {
+                  void fineTune.start(selected.id, fallback, usePreset)
+                }
+              }}
             >
-              Start fine-tuning
+              {allRewards ? 'Start fine-tuning all four' : 'Start fine-tuning'}
             </Button>
             <Button variant="ghost" disabled={busy} onClick={fineTune.reset}>
               Reset
             </Button>
             <p className={styles.estimate}>
-              {selected
-                ? `${count(selected.row_count)} rows × ${currentSettings.epochs} epoch${currentSettings.epochs === 1 ? '' : 's'}${device ? ` · ${device.toUpperCase()} backend` : ''}.`
-                : null}
+              {allRewards && !enoughDatasets
+                ? 'Select one saved dataset for each reward.'
+                : enoughDatasets
+                  ? `${count(trainingDatasets.reduce((total, dataset) => total + dataset.row_count, 0))} rows × ${currentSettings.epochs} epoch${currentSettings.epochs === 1 ? '' : 's'}${device ? ` · ${device.toUpperCase()} backend` : ''}.`
+                  : null}
             </p>
           </div>
+          {allRewards && enoughDatasets && !submitting ? (
+            <p className={styles.estimate}>
+              Trains R0–R3 in order using seed {currentSettings.seed}.
+            </p>
+          ) : null}
         </PanelBody>
       </Panel>
 

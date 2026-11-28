@@ -3,6 +3,7 @@ from collections.abc import Callable, Sequence
 from application.ports.memory_store import MemoryStorePort
 from application.ports.models import ContinuationScorerPort, EmbeddingPort, LLMPort, TokenizerPort
 from application.use_cases.generation import AnswerQuestion, RewriteQuery
+from application.use_cases.generation.rewrite_query import EVIDENCE_CANDIDATE_TEMPLATE
 from application.use_cases.retrieval import BuildContext, RetrieveMemories
 from application.use_cases.rewards import R0Builder, R1Builder, R2Builder, R3Builder, TrainingQuestion
 from domain.entities import DatasetPartition
@@ -88,7 +89,11 @@ class BuildRewardDatasets:
                 ).execute(train.conversations, seed=settings.seed)
 
         return BuildRewardDataset(
-            RewriteQuery(self._model if rewrite_model is None else rewrite_model, rewrite_concurrency),
+            RewriteQuery(
+                self._model if rewrite_model is None else rewrite_model,
+                rewrite_concurrency,
+                candidate_template=EVIDENCE_CANDIDATE_TEMPLATE if rewrite_model is not None else None,
+            ),
             RetrieveMemories(self._embedder, self._store),
             BuildContext(self._tokenizer.count_tokens),
             settings,

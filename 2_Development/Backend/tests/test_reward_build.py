@@ -3,7 +3,7 @@ from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from threading import Barrier
+from threading import Barrier, Event
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
@@ -234,6 +234,14 @@ class RewardBuildTest(TestCase):
         result = run(True)
         self.assertEqual(result.summary()['kept_single_rewrites'], 1)
         self.assertEqual(result.outcomes[0].winning_score, 1.0)
+        for call in rewriter.generate.call_args_list:
+            self.assertIn('ranked by semantic similarity to individual conversation', call.args[0])
+            self.assertIn('short, natural statements a speaker might use', call.args[0])
+            self.assertIn('Bridge wording gaps', call.args[0])
+            self.assertIn('Use only facts from the input.', call.args[0])
+            self.assertTrue(call.args[0].endswith('Where did Alice move?\n\nQuery:'))
+        self.assertTrue(result.examples[0].prompt.endswith('Where did Alice move?\nQuery:'))
+        self.assertTrue(result.examples[0].prompt.startswith('Rewrite the input as one standalone search query'))
         teacher.generate.assert_called_once()
         local.generate.assert_called_once()
         self.assertIn('Alice moved to Denver.', teacher.generate.call_args.args[0])
@@ -293,11 +301,19 @@ class RewardBuildTest(TestCase):
                     else:
                         self.assertEqual(status.json()["result"]["prepared_id"], "prepared")
 
-            with patch.object(routes, "_build", return_value=response) as build:
+            release_build = Event()
+
+            def build_after_discovery(*args):
+                if not release_build.wait(timeout=5):
+                    raise TimeoutError("Build settings were not checked in time.")
+                return response
+
+            with patch.object(routes, "_build", side_effect=build_after_discovery) as build:
                 started = client.post("/rewards/builds", json={
                     "prepared_id": "prepared",
                     "all_benchmark_seeds": True,
                     "rewrite_generator": "openai",
+                    "r1_teacher": "local",
                     "keep_all_one_ties": True,
                     "keep_single_rewrite": True,
                     "keep_tied_rewrite": True,
@@ -306,8 +322,24 @@ class RewardBuildTest(TestCase):
                 initial = started.json()
                 self.assertEqual(initial["seeds"], [123, 456, 789])
                 job = app.state.reward_build_job
+                try:
+                    active = client.get("/rewards/builds").json()["job"]
+                    self.assertEqual(active["id"], initial["id"])
+                    expected_config = {
+                        "max_inputs_per_reward": None,
+                        "rewrite_generator": "openai",
+                        "r1_teacher": "local",
+                        "keep_all_one_ties": True,
+                        "keep_single_rewrite": True,
+                        "keep_tied_rewrite": True,
+                    }
+                    self.assertEqual(initial["configuration"], expected_config)
+                    self.assertEqual(active["configuration"], expected_config)
+                finally:
+                    release_build.set()
                 job.future.result(timeout=3)
                 self.assertEqual(job.status().completed_seeds, (123, 456, 789))
+                self.assertEqual(job.status().configuration.model_dump(), expected_config)
                 self.assertEqual([call.args[3].seed for call in build.call_args_list], [123, 456, 789])
                 for call in build.call_args_list:
                     self.assertEqual(call.args[0].rewards, ["r0", "r1", "r2", "r3"])

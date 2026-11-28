@@ -278,6 +278,7 @@ export function useRewardBuild(
     saving: job?.status === 'saving',
     busy: build.state.status === 'running',
     progress: job?.attempted ?? {},
+    configuration: job?.configuration,
     seed: job?.seed,
     seeds: job?.seeds ?? [],
     completedSeeds: job?.completed_seeds ?? [],

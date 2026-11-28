@@ -183,11 +183,6 @@ export function BenchmarkBuildControls({
               Build all {benchmark.seeds.length * REWARD_IDS.length} datasets
             </Button>
           ) : null}
-          {build.busy ? (
-            <Button disabled={!build.canStop} onClick={() => void build.stop()}>
-              Stop build
-            </Button>
-          ) : null}
           {preparedId && estimate.total !== null && validLimit ? (
             <p className={styles.estimate}>
               Roughly {count(estimate.total)} model calls per seed.

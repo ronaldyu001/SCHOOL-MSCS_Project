@@ -242,15 +242,6 @@ export function BuildControls({
           >
             {actionLabel}
           </Button>
-          {busy ? (
-            <Button
-              variant="secondary"
-              disabled={!build.canStop}
-              onClick={() => void build.stop()}
-            >
-              Stop build
-            </Button>
-          ) : null}
           {ready && estimate.total !== null ? (
             <p className={styles.estimate}>
               Roughly {count(estimate.total)} calls to the model.

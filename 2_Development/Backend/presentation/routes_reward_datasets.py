@@ -20,7 +20,10 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from application.use_cases.generation.rewrite_query import REWRITE_PROMPT_VERSION
+from application.use_cases.generation.rewrite_query import (
+    EVIDENCE_CANDIDATE_PROMPT_VERSION,
+    REWRITE_PROMPT_VERSION,
+)
 from application.use_cases.dataset.index_dataset import MEMORY_FORMAT_VERSION
 from application.use_cases.training.build_reward_dataset import RewardBuildSettings
 from application.use_cases.training.build_reward_datasets import (
@@ -132,6 +135,17 @@ class RewardDatasetResponse(BaseModel):
     elapsed_seconds: float
 
 
+class RewardBuildConfiguration(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    max_inputs_per_reward: int | None
+    rewrite_generator: Literal["local", "openai"]
+    r1_teacher: Literal["local", "openai"] | None
+    keep_tied_rewrite: bool
+    keep_single_rewrite: bool
+    keep_all_one_ties: bool
+
+
 class RewardBuildStatus(BaseModel):
     id: UUID
     status: Literal["running", "cancelling", "cancelled", "saving", "completed"]
@@ -139,6 +153,7 @@ class RewardBuildStatus(BaseModel):
     seed: int | None = None
     seeds: tuple[int, ...] = ()
     completed_seeds: tuple[int, ...] = ()
+    configuration: RewardBuildConfiguration | None = None
     result: RewardDatasetResponse | None = None
 
 
@@ -154,6 +169,7 @@ class RewardBuildJob:
     seed: int | None = None
     seeds: tuple[int, ...] = ()
     completed_seeds: tuple[int, ...] = ()
+    configuration: RewardBuildConfiguration | None = None
     _stop: Event = field(default_factory=Event)
     _phase_lock: Lock = field(default_factory=Lock)
     _saving: bool = False
@@ -192,11 +208,13 @@ class RewardBuildJob:
                     id=self.id, status="completed" if result is not None else "cancelled",
                     attempted=self.attempted, result=result, seed=self.seed,
                     seeds=self.seeds, completed_seeds=self.completed_seeds,
+                    configuration=self.configuration,
                 )
             phase = "saving" if self._saving else "cancelling" if self._stop.is_set() else "running"
             return RewardBuildStatus(
                 id=self.id, status=phase, attempted=self.attempted, seed=self.seed,
                 seeds=self.seeds, completed_seeds=self.completed_seeds,
+                configuration=self.configuration,
             )
 
 
@@ -282,7 +300,17 @@ def start_reward_build(body: RewardDatasetRequest, request: Request) -> RewardBu
     _reserve_index()
     try:
         require_indexed_partition(request, body.prepared_id, partition)
-        job = RewardBuildJob(attempted=dict.fromkeys(body.rewards, 0), seed=seeds[0], seeds=seeds)
+        job = RewardBuildJob(
+            attempted=dict.fromkeys(body.rewards, 0), seed=seeds[0], seeds=seeds,
+            configuration=RewardBuildConfiguration(
+                max_inputs_per_reward=body.max_inputs_per_reward,
+                rewrite_generator=body.rewrite_generator,
+                r1_teacher=body.r1_teacher if "r1" in body.rewards else None,
+                keep_tied_rewrite=body.keep_tied_rewrite,
+                keep_single_rewrite=body.keep_single_rewrite,
+                keep_all_one_ties=body.keep_all_one_ties,
+            ),
+        )
         initial = job.status()
 
         def run() -> None:
@@ -406,6 +434,9 @@ def _build(
     rewrite_generator = {
         "provider": body.rewrite_generator,
         "model_id": rewrite_model.model_id if rewrite_model is not None else model_id,
+        "prompt_version": (
+            EVIDENCE_CANDIDATE_PROMPT_VERSION if rewrite_model is not None else REWRITE_PROMPT_VERSION
+        ),
     }
     r1_teacher = {
         "provider": body.r1_teacher,

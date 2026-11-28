@@ -1,13 +1,60 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
+  ApiError,
+  getTrainingRun,
   startTrainingRun,
   TRAINING_DEFAULTS,
   TRAINING_LIMITS,
   type EvaluationBenchmark,
+  type RewardId,
   type TrainingRun,
   type TrainingSettings,
 } from '@/lib/api'
-import { useAsyncRun } from '@/lib/useAsyncRun'
+import { describeError, useAsyncRun } from '@/lib/useAsyncRun'
+
+type TrainingPreset = { modelId: string; revision: string; settings: TrainingSettings }
+type QueueDataset = { id: string; reward: RewardId }
+type CheckpointDefaults = { modelId: string; revision: string }
+
+function pause() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 2000))
+}
+
+async function waitForTraining(run: TrainingRun) {
+  let failures = 0
+  while (run.status === 'queued' || run.status === 'running') {
+    await pause()
+    try {
+      run = await getTrainingRun(run.id)
+      failures = 0
+    } catch (error) {
+      if (
+        !(error instanceof ApiError) ||
+        ![0, 502, 503, 504].includes(error.status) ||
+        ++failures >= 5
+      ) {
+        throw error
+      }
+    }
+  }
+  if (run.status !== 'completed') {
+    throw new Error(run.error ?? `Training ended with status ${run.status}.`)
+  }
+  return run
+}
+
+async function startQueuedTraining(input: Parameters<typeof startTrainingRun>[0]) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await startTrainingRun(input)
+    } catch (error) {
+      // The previous worker can briefly hold its lease after reporting completion.
+      if (!(error instanceof ApiError) || error.status !== 409 || attempt === 5)
+        throw error
+      await pause()
+    }
+  }
+}
 
 export function benchmarkTrainingSettings(
   benchmark: EvaluationBenchmark,
@@ -77,7 +124,16 @@ export function useFineTune(onStarted: () => Promise<void>) {
   const [modelId, setModelId] = useState('')
   const [revision, setRevision] = useState('')
   const [name, setName] = useState('')
-  const submit = useAsyncRun<TrainingRun>()
+  const [rewardSelection, setRewardSelection] = useState<Partial<
+    Record<RewardId, string>
+  > | null>(null)
+  const [queue, setQueue] = useState<{
+    reward: RewardId
+    completed: number
+    total: number
+  } | null>(null)
+  const submittingRef = useRef(false)
+  const submit = useAsyncRun<TrainingRun | null>()
 
   const update = useCallback(
     <K extends keyof TrainingSettings>(key: K, value: TrainingSettings[K]) => {
@@ -91,6 +147,7 @@ export function useFineTune(onStarted: () => Promise<void>) {
     setModelId('')
     setRevision('')
     setName('')
+    setQueue(null)
     submit.reset()
   }, [submit])
 
@@ -101,26 +158,79 @@ export function useFineTune(onStarted: () => Promise<void>) {
   const start = useCallback(
     async (
       datasetId: string,
-      fallback: { modelId: string; revision: string },
-      preset?: { modelId: string; revision: string; settings: TrainingSettings },
+      fallback: CheckpointDefaults,
+      preset?: TrainingPreset,
     ) => {
+      if (submittingRef.current) return null
+      submittingRef.current = true
+      setQueue(null)
       const chosenModel = preset?.modelId ?? (modelId.trim() || fallback.modelId)
       const chosenRevision =
         preset?.revision ??
         (revision.trim() || (chosenModel === fallback.modelId ? fallback.revision : ''))
-      const run = await submit.run(() =>
-        startTrainingRun({
-          datasetId,
-          modelId: chosenModel,
-          revision: chosenRevision,
-          name: name.trim(),
-          settings: preset?.settings ?? settings,
-        }),
-      )
-      if (run) await onStarted()
-      return run
+      try {
+        const run = await submit.run(() =>
+          startTrainingRun({
+            datasetId,
+            modelId: chosenModel,
+            revision: chosenRevision,
+            name: name.trim(),
+            settings: preset?.settings ?? settings,
+          }),
+        )
+        if (run) await onStarted()
+        return run
+      } finally {
+        submittingRef.current = false
+      }
     },
     [modelId, name, onStarted, revision, settings, submit],
+  )
+
+  const startAllRewards = useCallback(
+    async (datasets: readonly QueueDataset[], preset: TrainingPreset) => {
+      if (submittingRef.current || datasets.length === 0) return
+      submittingRef.current = true
+      try {
+        await submit.run(async () => {
+          let latest: TrainingRun | undefined
+          for (const [index, dataset] of datasets.entries()) {
+            const reward = dataset.reward.toUpperCase()
+            const prefix = name.trim()
+            const suffix = `${reward} · Seed ${preset.settings.seed}`
+            setQueue({
+              reward: dataset.reward,
+              completed: index,
+              total: datasets.length,
+            })
+            try {
+              const run = await startQueuedTraining({
+                ...preset,
+                datasetId: dataset.id,
+                name: prefix
+                  ? `${prefix.slice(0, 117 - suffix.length)} · ${suffix}`
+                  : suffix,
+              })
+              await onStarted()
+              latest = await waitForTraining(run)
+              setQueue({
+                reward: dataset.reward,
+                completed: index + 1,
+                total: datasets.length,
+              })
+            } catch (error) {
+              throw new Error(`${reward}: ${describeError(error)}`, { cause: error })
+            } finally {
+              await onStarted()
+            }
+          }
+          return latest ?? null
+        })
+      } finally {
+        submittingRef.current = false
+      }
+    },
+    [name, onStarted, submit],
   )
 
   return useMemo(
@@ -137,9 +247,25 @@ export function useFineTune(onStarted: () => Promise<void>) {
       state: submit.state,
       submitting: submit.state.status === 'running',
       start,
+      startAllRewards,
+      rewardSelection,
+      setRewardSelection,
+      queue,
       reset,
     }),
-    [modelId, name, reset, revision, settings, start, submit.state, update],
+    [
+      modelId,
+      name,
+      queue,
+      reset,
+      revision,
+      rewardSelection,
+      settings,
+      start,
+      startAllRewards,
+      submit.state,
+      update,
+    ],
   )
 }
 

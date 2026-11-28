@@ -19,6 +19,16 @@
   gap: var(--space-4);
 }
 
+.rewardDatasets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-4);
+}
+
+.rewardDatasets > * {
+  min-inline-size: 0;
+}
+
 /* Auto-fit rather than a fixed column count: the advanced settings are eight
    short numeric fields, and a fixed grid leaves them stranded at tablet width. */
 .fields {

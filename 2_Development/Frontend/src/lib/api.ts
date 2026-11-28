@@ -587,7 +587,11 @@ export type RewardDatasetResponse = {
 }
 
 export type RewriteGenerator = 'local' | 'openai'
-type RewriteGeneratorProvenance = { provider: RewriteGenerator; model_id: string }
+type RewriteGeneratorProvenance = {
+  provider: RewriteGenerator
+  model_id: string
+  prompt_version?: string
+}
 
 export type RewardBuildInput = Checkpoint & {
   preparedId: string
@@ -612,12 +616,22 @@ export type RewardBuildInput = Checkpoint & {
 
 export type RewardBuildProgress = Partial<Record<RewardId, number>>
 
+type RewardBuildConfiguration = {
+  max_inputs_per_reward: number | null
+  rewrite_generator: RewriteGenerator
+  r1_teacher: RewriteGenerator | null
+  keep_tied_rewrite: boolean
+  keep_single_rewrite: boolean
+  keep_all_one_ties: boolean
+}
+
 export type RewardBuildStatus = {
   id: string
   attempted: RewardBuildProgress
   seed?: number | null
   seeds?: number[]
   completed_seeds?: number[]
+  configuration?: RewardBuildConfiguration | null
 } & (
   | { status: 'running' | 'cancelling' | 'cancelled' | 'saving'; result: null }
   | { status: 'completed'; result: RewardDatasetResponse }
@@ -625,7 +639,7 @@ export type RewardBuildStatus = {
 
 export type RewardBuildUpdate = Pick<
   RewardBuildStatus,
-  'id' | 'status' | 'attempted' | 'seed' | 'seeds' | 'completed_seeds'
+  'id' | 'status' | 'attempted' | 'seed' | 'seeds' | 'completed_seeds' | 'configuration'
 >
 
 function validateRewardBuildStatus(job: RewardBuildStatus): RewardBuildStatus {
@@ -709,8 +723,8 @@ export async function watchRewardBuild(
   let job = validateRewardBuildStatus(initial)
   rememberRewardBuild(job.id)
   while (!signal?.aborted) {
-    const { id, status, attempted, seed, seeds, completed_seeds } = job
-    onProgress({ id, status, attempted, seed, seeds, completed_seeds })
+    const { id, status, attempted, seed, seeds, completed_seeds, configuration } = job
+    onProgress({ id, status, attempted, seed, seeds, completed_seeds, configuration })
     if (status === 'completed' || status === 'cancelled') {
       rememberRewardBuild(null)
       return job.result
@@ -886,6 +900,14 @@ export function listSavedRewardDatasets() {
 export function listTrainingRuns() {
   return request<TrainingRun[]>(
     artifactPaths.runs,
+    { method: 'GET' },
+    { timeoutMs: 10_000 },
+  )
+}
+
+export function getTrainingRun(id: string) {
+  return request<TrainingRun>(
+    artifactPath('runs', id),
     { method: 'GET' },
     { timeoutMs: 10_000 },
   )
